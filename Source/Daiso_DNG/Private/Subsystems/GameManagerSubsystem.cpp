@@ -134,6 +134,8 @@ void UGameManagerSubsystem::RegisterDice(ACPP_Dice* DiceToRegister)
 		return;
 	}
 	
+	DiceToRegister->SetCanRollDice(false);
+	
 	RegisteredDice.Add(DiceToRegister);
 }
 
@@ -145,6 +147,8 @@ void UGameManagerSubsystem::UnregisterDice(ACPP_Dice* DiceToUnregister)
 		return;
 	}
 	
+	DiceToUnregister->SetCanRollDice(true);
+	
 	RegisteredDice.Remove(DiceToUnregister);
 }
 
@@ -152,6 +156,42 @@ void UGameManagerSubsystem::UnregisterDice(ACPP_Dice* DiceToUnregister)
 bool UGameManagerSubsystem::CheckIsDiceRegistered(ACPP_Dice* DiceToCheck) const
 {
 	return RegisteredDice.Contains(DiceToCheck);
+}
+
+void UGameManagerSubsystem::DestroyRegisteredDice()
+{
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Magenta, FString::FromInt(RegisteredDice.Num()));
+	if (RegisteredDice.Num() < 6)
+	{
+		for (ACPP_Dice* Dice : RegisteredDice)
+		{
+			if (!Dice->bIsHidden)
+			{
+				Dice->ShowDiceEffect(true);
+				Dice->bIsHidden = true;
+			}
+			
+		}
+	}
+	else
+	{
+		for (int i = 0; i < 6; i++)
+		{
+			if (RegisteredDice[i]->bIsHidden)
+			{
+				RegisteredDice[i]->ShowDiceEffect(false);
+				RegisteredDice[i]->bIsHidden = false;
+			}
+			
+			RegisteredDice[i]->SetCanRollDice(true);
+			RegisteredDice[i]->SetIsActive(false);
+		}
+		
+		RegisteredDice[5]->SetCanRollDice(true);
+		RegisteredDice[5]->SetIsActive(false);
+		
+		RegisteredDice.Empty();
+	}
 }
 
 // Сохраняет ссылку на старую таблицу очков для существующей Blueprint-логики.
