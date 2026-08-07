@@ -359,6 +359,10 @@ void UDicePhysicsRollComponent::HandleDiceHit(UPrimitiveComponent* HitComponent,
 	const float Denominator = FMath::Max(FullStrengthImpactSpeed - MinimumImpactSpeed, 1.0f);
 	const float Strength = FMath::Clamp((ImpactSpeed - MinimumImpactSpeed) / Denominator, 0.0f, 1.0f);
 	OnDiceImpact.Broadcast(Strength, Hit.ImpactPoint);
+	if (bHitBoard)
+	{
+		PlayBoardImpactFeedback(Strength, Hit.ImpactPoint);
+	}
 }
 
 // Возвращает угловую ошибку между текущим и полным целевым поворотом кубика.

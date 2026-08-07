@@ -3,6 +3,7 @@
 #include "Dice/DicePhysicsRollComponent.h"
 
 #include "Components/PrimitiveComponent.h"
+#include "Dice/DiceImpactCameraShake.h"
 #include "GameFramework/Actor.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 
@@ -20,6 +21,7 @@ UDicePhysicsRollComponent::UDicePhysicsRollComponent()
 	FaceLocalNormals.Add(4, FVector::LeftVector);
 	FaceLocalNormals.Add(5, FVector::BackwardVector);
 	FaceLocalNormals.Add(6, FVector::DownVector);
+	BoardImpactCameraShakeClass = UDiceImpactCameraShake::StaticClass();
 }
 
 // При запуске игры заранее находит физическое тело кубика, если включён автоматический поиск.
@@ -125,6 +127,7 @@ bool UDicePhysicsRollComponent::StartRoll(const int32 Result, const FQuat& Desir
 	bHasBoardImpact = false;
 	bHasBeenAirborne = false;
 	CorrectionBounceCount = 0;
+	LastImpactFeedbackTime = -1.0;
 
 	OriginalAttachParent = Body->GetAttachParent();
 	OriginalAttachSocket = Body->GetAttachSocketName();

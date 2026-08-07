@@ -11,6 +11,9 @@ class UPhysicalMaterial;
 class UPrimitiveComponent;
 class USceneComponent;
 class UBoxComponent;
+class UCameraShakeBase;
+class USoundAttenuation;
+class USoundBase;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDiceRollStartedSignature, int32, Result);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDiceImpactSignature, float, Strength, FVector, Location);
@@ -263,6 +266,47 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact", meta=(ClampMin="1.0", UIMin="1.0", UIMax="1500.0"))
 	float FullStrengthImpactSpeed = 520.0f;
 
+	/** Звук удара о доску. Оставьте пустым, пока нужный Sound Wave или Sound Cue не назначен в Details. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact Feedback")
+	TObjectPtr<USoundBase> BoardImpactSound = nullptr;
+
+	/** Общая громкость звука; фактическая громкость дополнительно зависит от силы удара. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact Feedback|Sound",
+		meta=(ClampMin="0.0", UIMin="0.0", UIMax="2.0"))
+	float BoardImpactSoundVolume = 0.75f;
+
+	/** Минимальный случайный множитель высоты тона для естественного разнообразия ударов. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact Feedback|Sound",
+		meta=(ClampMin="0.1", UIMin="0.8", UIMax="1.2"))
+	float BoardImpactSoundPitchMin = 0.96f;
+
+	/** Максимальный случайный множитель высоты тона для естественного разнообразия ударов. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact Feedback|Sound",
+		meta=(ClampMin="0.1", UIMin="0.8", UIMax="1.2"))
+	float BoardImpactSoundPitchMax = 1.04f;
+
+	/** Необязательные настройки пространственного затухания звука. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact Feedback|Sound")
+	TObjectPtr<USoundAttenuation> BoardImpactSoundAttenuation = nullptr;
+
+	/** Включает короткую тряску камеры при ударе кубика о поверхность или границу доски. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact Feedback|Camera")
+	bool bEnableBoardImpactCameraShake = true;
+
+	/** Класс тряски камеры; по умолчанию используется встроенный лёгкий DiceImpactCameraShake. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact Feedback|Camera")
+	TSubclassOf<UCameraShakeBase> BoardImpactCameraShakeClass;
+
+	/** Масштаб тряски; итоговая сила дополнительно зависит от скорости удара. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact Feedback|Camera",
+		meta=(ClampMin="0.0", UIMin="0.0", UIMax="2.0"))
+	float BoardImpactCameraShakeScale = 1.0f;
+
+	/** Минимальный интервал между эффектами одного кубика, защищающий от дребезга контактов Chaos. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Impact Feedback",
+		meta=(ClampMin="0.0", UIMin="0.0", UIMax="0.5"))
+	float ImpactFeedbackCooldown = 0.05f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Settle", meta=(ClampMin="0.0", UIMin="0.0", UIMax="200.0"))
 	float SettleLinearSpeed = 18.0f;
 
@@ -346,6 +390,9 @@ private:
 	/** Восстанавливает исходное затухание тела и режим уведомлений о столкновениях. */
 	void RestoreBodySettings();
 
+	/** Воспроизводит назначенный звук и короткую тряску камеры с учётом силы удара. */
+	void PlayBoardImpactFeedback(float Strength, const FVector& ImpactLocation);
+
 	/** Возвращает явно заданный стол либо находит его по тегу и имени класса. */
 	AActor* ResolveBoardActor();
 
@@ -392,4 +439,5 @@ private:
 	bool bHasFaceTarget = false;
 	bool bLandingYawResolved = true;
 	int32 CorrectionBounceCount = 0;
+	double LastImpactFeedbackTime = -1.0;
 };
