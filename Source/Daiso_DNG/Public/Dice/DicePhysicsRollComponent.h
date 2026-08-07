@@ -17,12 +17,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDiceImpactSignature, float, Streng
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDiceRollFinishedSignature, int32, Result);
 
 /**
- * Adds a physical, but directed, throw to an existing Blueprint dice actor.
- *
- * The dice is completely free during the first part of the throw. While it is
- * descending the component applies a damped torque towards the requested face.
- * A short pre-impact phase captures the requested face while the die is still airborne.
- * After the first genuine landing contact the component never rotates the body.
+ * Добавляет управляемый физический бросок существующему Blueprint-актору кубика.
+ * В начале кубик движется свободно, а при снижении компонент плавно направляет нужную грань вверх.
+ * После первого настоящего контакта со столом компонент больше не поворачивает физическое тело.
  */
 UCLASS(ClassGroup=(Dice), meta=(BlueprintSpawnableComponent, DisplayName="Dice Physics Roll"))
 class DAISO_DNG_API UDicePhysicsRollComponent : public UActorComponent
@@ -30,23 +27,31 @@ class DAISO_DNG_API UDicePhysicsRollComponent : public UActorComponent
 	GENERATED_BODY()
 
 public:
+	/** Создаёт компонент и стандартное соответствие значений локальным нормалям граней. */
 	UDicePhysicsRollComponent();
 
+	/** При старте игры заранее находит физическое тело кубика, если включён автоматический поиск. */
 	virtual void BeginPlay() override;
+
+	/** При завершении игры отменяет бросок и снимает подписки на столкновения. */
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/** Обновляет физическую симуляцию или финальное выравнивание текущего броска. */
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	/** Uses Face Local Normals below to construct the landing rotation. */
+	/** Запускает бросок к указанному значению, используя таблицу локальных нормалей граней. */
 	UFUNCTION(BlueprintCallable, Category="Dice|Physics")
 	bool RollToValue(int32 Result);
 
-	/** Uses an exact authored world rotation (useful with the rotations already present in BP_Dice). */
+	/** Запускает бросок к явно заданному мировому повороту приземления. */
 	UFUNCTION(BlueprintCallable, Category="Dice|Physics")
 	bool RollToRotation(int32 Result, FRotator LandingRotation);
 
+	/** Отменяет активный бросок и при необходимости полностью останавливает физическое тело. */
 	UFUNCTION(BlueprintCallable, Category="Dice|Physics")
 	void CancelRoll(bool bStopPhysics = true);
 
+	/** Возвращает true, пока выполняется симуляция броска или финальное выравнивание. */
 	UFUNCTION(BlueprintPure, Category="Dice|Physics")
 	bool IsRolling() const;
 
@@ -300,27 +305,63 @@ private:
 		FinalAlign
 	};
 
+	/** Принимает событие Chaos-столкновения и распознаёт удар, приземление или корректирующий отскок. */
 	UFUNCTION()
 	void HandleDiceHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent,
 		FVector NormalImpulse, const FHitResult& Hit);
 
+	/** Возвращает явно назначенное либо первое подходящее физическое тело владельца. */
 	UPrimitiveComponent* ResolveDiceBody();
+
+	/** Сохраняет настройки тела, включает физику и прикладывает стартовые импульсы. */
 	bool StartRoll(int32 Result, const FQuat& DesiredWorldRotation);
+
+	/** Обновляет управляемый полёт и проверяет условия завершения броска. */
 	void UpdateSimulation(float DeltaTime);
+
+	/** Останавливает физику и запускает короткую доводку поворота до цели. */
 	void BeginFinalAlignment();
+
+	/** Плавно интерполирует поворот во время финального выравнивания. */
 	void UpdateFinalAlignment(float DeltaTime);
+
+	/** Завершает бросок, восстанавливает тело и рассылает итоговое значение. */
 	void CompleteRoll(bool bApplyTargetRotation);
+
+	/** Возвращает полную угловую ошибку относительно целевого поворота в радианах. */
 	float GetOrientationErrorRadians() const;
+
+	/** Возвращает отклонение выбранной грани от направления вверх в радианах. */
 	float GetFaceUpErrorRadians() const;
+
+	/** Оценивает оставшееся время до контакта с верхней плоскостью стола. */
 	float GetEstimatedTimeToBoardImpact(const FVector& LinearVelocity) const;
+
+	/** Возвращает зазор между нижней опорной точкой кубика и поверхностью стола. */
 	float GetBoardClearance() const;
+
+	/** Возвращает направление вверх для найденной поверхности стола. */
 	FVector GetBoardUpVector() const;
+
+	/** Восстанавливает исходное затухание тела и режим уведомлений о столкновениях. */
 	void RestoreBodySettings();
+
+	/** Возвращает явно заданный стол либо находит его по тегу и имени класса. */
 	AActor* ResolveBoardActor();
+
+	/** Выбирает наиболее крупный горизонтальный примитив найденного стола. */
 	UPrimitiveComponent* ResolveBoardSurface();
+
+	/** Создаёт общий невидимый пол и четыре ограничительные стенки игрового стола. */
 	void EnsureBoardBoundaryWalls();
+
+	/** Рассчитывает горизонтальную скорость броска с учётом положения на столе. */
 	FVector GetBoardAwareHorizontalVelocity() const;
+
+	/** Совмещает выбранную грань с верхом, сохраняя естественное рыскание кубика. */
 	FQuat ResolveNaturalLandingYaw(const FVector& FaceNormalLocal, const FQuat& CurrentRotation) const;
+
+	/** Создаёт и регистрирует один невидимый статический коллайдер границы стола. */
 	UBoxComponent* CreateBoardCollider(FName ColliderName, const FVector& RelativeLocation, const FVector& LocalBoxExtent);
 
 	UPROPERTY(Transient)

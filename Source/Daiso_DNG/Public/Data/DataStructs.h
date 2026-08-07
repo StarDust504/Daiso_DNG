@@ -13,5 +13,5 @@ struct FComboData : public FTableRowBase
 	
 public:
 	UPROPERTY(editAnywhere, BlueprintReadWrite)
-	int32 ComboScore;
+	int32 ComboScore = 0;
 };

@@ -1,0 +1,12 @@
+Name,CombinationType,FaceValue,MinDiceCount,MaxDiceCount,StraightStart,StraightEnd,BaseScore,ScalingRule,Priority
+Single_1,SingleFace,1,1,1,1,6,100,None,10
+Single_5,SingleFace,5,1,1,1,6,50,None,10
+Same_1,SameFace,1,3,6,1,6,1000,DoublePerAdditionalDie,20
+Same_2,SameFace,2,3,6,1,6,200,DoublePerAdditionalDie,20
+Same_3,SameFace,3,3,6,1,6,300,DoublePerAdditionalDie,20
+Same_4,SameFace,4,3,6,1,6,400,DoublePerAdditionalDie,20
+Same_5,SameFace,5,3,6,1,6,500,DoublePerAdditionalDie,20
+Same_6,SameFace,6,3,6,1,6,600,DoublePerAdditionalDie,20
+Straight_1_5,Straight,1,5,5,1,5,500,None,30
+Straight_2_6,Straight,1,5,5,2,6,750,None,30
+Straight_1_6,Straight,1,6,6,1,6,1500,None,40

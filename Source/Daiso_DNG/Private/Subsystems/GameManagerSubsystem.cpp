@@ -2,72 +2,161 @@
 
 
 #include "Subsystems/GameManagerSubsystem.h"
-#include "Daiso_DNG/Public/Data/DataStructs.h"
 
-FName UGameManagerSubsystem::AddComboToTempArray(int32 NumberToAppend)
+#include "Dice/CPP_Dice.h"
+#include "Dice/DiceScoringLibrary.h"
+#include "Engine/DataTable.h"
+#include "Engine/Engine.h"
+
+namespace DiceSelection
 {
-	TempScore.Add(NumberToAppend);
-	
-	FString TempString;
-	
-	TempScore.Sort();
-	
-	for (int32 ArrNum : TempScore)
+	// Преобразует массив значений в компактную строку для отладочного сообщения.
+	static FString ToString(const TArray<int32>& Values)
 	{
-		TempString.Append(FString::FromInt(ArrNum));
+		TArray<FString> Parts;
+		for (const int32 Value : Values)
+		{
+			Parts.Add(FString::FromInt(Value));
+		}
+		return FString::Join(Parts, TEXT(","));
 	}
-	
-	return FName(*TempString);
 }
 
-FName UGameManagerSubsystem::RemoveComboFromTempArray(int32 NumberToRemove)
+// Загружает стандартную таблицу правил при создании подсистемы мира.
+void UGameManagerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-	FString TempString;
-	
+	Super::Initialize(Collection);
+	DiceScoringRules = LoadObject<UDataTable>(
+		nullptr, TEXT("/Game/Data/DT_DiceScoringRules.DT_DiceScoringRules"));
+}
+
+// Добавляет значение выбранного кубика и сразу пересчитывает текущую комбинацию.
+FName UGameManagerSubsystem::AddComboToTempArray(const int32 NumberToAppend)
+{
+	TempScore.Add(NumberToAppend);
+	TempScore.Sort();
+	RefreshSelectionScore();
+	return BuildSelectedDiceKey();
+}
+
+// Удаляет одно совпадающее значение кубика и пересчитывает оставшийся выбор.
+FName UGameManagerSubsystem::RemoveComboFromTempArray(const int32 NumberToRemove)
+{
 	if (!TempScore.IsEmpty() && TempScore.Contains(NumberToRemove))
 	{
 		TempScore.RemoveSingle(NumberToRemove);
-		
 		TempScore.Sort();
 	}
-	
-	for (int32 ArrNum : TempScore)
-	{
-		TempString.Append(FString::FromInt(ArrNum));
-	}
-	
-	return FName(*TempString);
+	RefreshSelectionScore();
+	return BuildSelectedDiceKey();
 }
 
-int32 UGameManagerSubsystem::GetCurrentScore(FName Combo)
+// Возвращает текущий счёт; старый параметр ключа оставлен ради совместимости Blueprint.
+int32 UGameManagerSubsystem::GetCurrentScore(FName)
 {
-	if (!ScoreDataTable)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, "DT not found!!!");
-		return -1;
-	}
-		
-	
-	FComboData* FoundRow = ScoreDataTable->FindRow<FComboData>(Combo, "");
-	if (!FoundRow) return 0;
-	
-	return FoundRow->ComboScore;
+	return LastSelectionScoreResult.TotalScore;
 }
 
+// Возвращает копию отсортированных значений выбранных кубиков.
+TArray<int32> UGameManagerSubsystem::GetSelectedDiceValues() const
+{
+	return TempScore;
+}
+
+// Возвращает полный результат последнего пересчёта выбранных кубиков.
+FDiceRollScoreResult UGameManagerSubsystem::GetSelectedDiceScore() const
+{
+	return LastSelectionScoreResult;
+}
+
+// Сообщает, что все выбранные кубики можно полностью разложить на результативные комбинации.
+bool UGameManagerSubsystem::IsCurrentDiceSelectionValid() const
+{
+	return bIsCurrentSelectionValid;
+}
+
+// Очищает выбор и публикует пустой результат подписчикам.
+void UGameManagerSubsystem::ClearDiceSelection()
+{
+	TempScore.Reset();
+	RefreshSelectionScore();
+}
+
+// Собирает совместимый FName-ключ из отсортированных значений выбранных кубиков.
+FName UGameManagerSubsystem::BuildSelectedDiceKey() const
+{
+	FString Key;
+	for (const int32 Value : TempScore)
+	{
+		Key.AppendInt(Value);
+	}
+	return Key.IsEmpty() ? NAME_None : FName(*Key);
+}
+
+// Пересчитывает выбор по Data Table, обновляет валидность и выводит диагностику.
+void UGameManagerSubsystem::RefreshSelectionScore()
+{
+	if (!IsValid(DiceScoringRules))
+	{
+		DiceScoringRules = LoadObject<UDataTable>(
+			nullptr, TEXT("/Game/Data/DT_DiceScoringRules.DT_DiceScoringRules"));
+	}
+
+	LastSelectionScoreResult = TempScore.IsEmpty()
+		? FDiceRollScoreResult()
+		: UDiceScoringLibrary::CalculateSelectedDiceScore(TempScore, DiceScoringRules);
+	bIsCurrentSelectionValid = LastSelectionScoreResult.bIsValid
+		&& LastSelectionScoreResult.bAllDiceScored;
+	OnDiceSelectionChanged.Broadcast(LastSelectionScoreResult);
+
+	const FString SelectedText = DiceSelection::ToString(TempScore);
+	const FString UnscoredText = DiceSelection::ToString(LastSelectionScoreResult.UnscoredDiceValues);
+	const FString Message = FString::Printf(
+		TEXT("Selected dice: [%s] | score: %d | valid: %s%s"),
+		*SelectedText,
+		LastSelectionScoreResult.TotalScore,
+		bIsCurrentSelectionValid ? TEXT("YES") : TEXT("NO"),
+		UnscoredText.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" | unscored: [%s]"), *UnscoredText));
+
+	UE_LOG(LogTemp, Display, TEXT("%s"), *Message);
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(
+			-1, 3.0f, bIsCurrentSelectionValid ? FColor::Green : FColor::Yellow, Message);
+	}
+}
+
+// Добавляет валидный кубик в реестр без дубликатов.
 void UGameManagerSubsystem::RegisterDice(ACPP_Dice* DiceToRegister)
 {
-	if (RegisteredDice.Contains(DiceToRegister))
+	if (!IsValid(DiceToRegister) || RegisteredDice.Contains(DiceToRegister))
+	{
 		return;
+	}
 	
 	RegisteredDice.Add(DiceToRegister);
 }
 
+// Удаляет кубик из реестра, если он был зарегистрирован.
 void UGameManagerSubsystem::UnregisterDice(ACPP_Dice* DiceToUnregister)
 {
 	if (!RegisteredDice.Contains(DiceToUnregister))
+	{
 		return;
+	}
 	
 	RegisteredDice.Remove(DiceToUnregister);
 }
 
+// Проверяет наличие кубика в реестре подсистемы.
+bool UGameManagerSubsystem::CheckIsDiceRegistered(ACPP_Dice* DiceToCheck) const
+{
+	return RegisteredDice.Contains(DiceToCheck);
+}
+
+// Сохраняет ссылку на старую таблицу очков для существующей Blueprint-логики.
+void UGameManagerSubsystem::RegisterScoreDataTable(UDataTable* ScoreDT)
+{
+	ScoreDataTable = ScoreDT;
+}
 
