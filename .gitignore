@@ -76,3 +76,5 @@ DerivedDataCache/*
 .vsconfig
 Daiso_DNG.slnx
 Automation_Daiso_DNG.slnx
+Builds
+*.zip

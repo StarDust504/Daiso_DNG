@@ -3,10 +3,9 @@
 
 #include "Dice/CPP_Dice.h"
 
+#include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TimelineComponent.h"
-#include "Materials/MaterialInterface.h"
-#include "UObject/ConstructorHelpers.h"
 
 // Sets default values
 ACPP_Dice::ACPP_Dice()
@@ -15,14 +14,21 @@ ACPP_Dice::ACPP_Dice()
 	PrimaryActorTick.bCanEverTick = true;
 	
 	SMC_Dice = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DiceStaticMeshComponent"));
+	SetRootComponent(SMC_Dice);
 	MaterialTimeline = CreateDefaultSubobject<UTimelineComponent>(TEXT("MaterialTimeline"));
-
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> SelectionMaterialAsset(
-		TEXT("/Game/Materials/Dice/M_DiceSelectionHighlight.M_DiceSelectionHighlight"));
-	if (SelectionMaterialAsset.Succeeded())
-	{
-		SelectionHighlightMaterial = SelectionMaterialAsset.Object;
-	}
+	SelectionLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("SelectionLight"));
+	SelectionLight->SetupAttachment(SMC_Dice);
+	SelectionLight->SetRelativeLocation(FVector(0.0, 0.0, -2.6));
+	SelectionLight->SetMobility(EComponentMobility::Movable);
+	SelectionLight->SetLightColor(FLinearColor(0.08f, 0.32f, 0.06f));
+	SelectionLight->SetIntensity(220.0f);
+	SelectionLight->SetAttenuationRadius(38.0f);
+	SelectionLight->SetSourceRadius(3.0f);
+	SelectionLight->SetCastShadows(false);
+	SelectionLight->bUseInverseSquaredFalloff = false;
+	SelectionLight->LightFalloffExponent = 6.0f;
+	SelectionLight->SetVolumetricScatteringIntensity(0.0f);
+	SelectionLight->SetVisibility(false);
 }
 
 // Called when the game starts or when spawned
@@ -34,19 +40,19 @@ void ACPP_Dice::BeginPlay()
 	ApplySelectionHighlight();
 }
 
-// Меняет логическое состояние выбора и немедленно обновляет контур кубика.
+// Меняет логическое состояние выбора и немедленно обновляет свет под кубиком.
 void ACPP_Dice::SetIsActive(const bool NewActive)
 {
 	bIsActive = NewActive;
 	ApplySelectionHighlight();
 }
 
-// Накладывает отдельный emissive-материал поверх меша, не затрагивая основной материал кубика.
+// Не затрагивает материал кубика: включает только отдельный источник света под ним.
 void ACPP_Dice::ApplySelectionHighlight()
 {
-	if (IsValid(SMC_Dice))
+	if (IsValid(SelectionLight))
 	{
-		SMC_Dice->SetOverlayMaterial(bIsActive ? SelectionHighlightMaterial.Get() : nullptr);
+		SelectionLight->SetVisibility(bIsActive && !bIsHidden);
 	}
 }
 
@@ -67,6 +73,11 @@ void ACPP_Dice::Tick(float DeltaTime)
 
 void ACPP_Dice::ShowDiceEffect(bool bDissolve)
 {
+	if (IsValid(SelectionLight))
+	{
+		SelectionLight->SetVisibility(!bDissolve && bIsActive);
+	}
+
 	FOnTimelineFloat TimelineProgress;
 	TimelineProgress.BindUFunction(this, FName("UpdateMaterialParameter"));
 	if (bDissolve)

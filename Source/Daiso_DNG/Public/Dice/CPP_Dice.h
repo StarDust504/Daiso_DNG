@@ -7,6 +7,7 @@
 #include "CPP_Dice.generated.h"
 
 class UTimelineComponent;
+class UPointLightComponent;
 class UMaterialInterface;
 UCLASS()
 class DAISO_DNG_API ACPP_Dice : public AActor
@@ -26,9 +27,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
 	UMaterialInterface* AppearMaterial;
 
-	/** Материал контура, который накладывается поверх выбранного кубика. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Materials")
-	TObjectPtr<UMaterialInterface> SelectionHighlightMaterial = nullptr;
+	/** Мягкий зелёный свет под выбранным кубиком, не меняющий его основной материал. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UPointLightComponent> SelectionLight;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UTimelineComponent* MaterialTimeline;
@@ -74,7 +75,7 @@ public:
 	bool bIsHidden = false;
 	
 private:
-	/** Включает или снимает overlay-материал в соответствии с текущим состоянием выбора. */
+	/** Показывает или скрывает свет под кубиком в соответствии с состоянием выбора. */
 	void ApplySelectionHighlight();
 
 	bool bCanRoll = true;

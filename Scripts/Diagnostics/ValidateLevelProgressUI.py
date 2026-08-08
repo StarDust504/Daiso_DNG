@@ -17,7 +17,7 @@ BLUEPRINT_PATHS = [
 
 # Проверяет таблицу целей и компиляцию Blueprint, от которых зависит игровой интерфейс.
 def validate_level_progress_ui():
-    report = {"goals": {}, "selection_material": {}, "blueprints": [], "errors": []}
+    report = {"goals": {}, "selection_light": {}, "blueprints": [], "errors": []}
     goals = unreal.EditorAssetLibrary.load_asset("/Game/Data/DT_LevelGoals")
     if goals is None:
         report["errors"].append("DT_LevelGoals was not found")
@@ -30,18 +30,6 @@ def validate_level_progress_ui():
         expected = [f"Level_{number:02d}" for number in range(1, 9)]
         if sorted(row_names) != expected:
             report["errors"].append("DT_LevelGoals does not contain Level_01..Level_08")
-
-    selection_material = unreal.EditorAssetLibrary.load_asset(
-        "/Game/Materials/Dice/M_DiceSelectionHighlight"
-    )
-    if selection_material is None:
-        report["errors"].append("M_DiceSelectionHighlight was not found")
-    else:
-        report["selection_material"] = {
-            "asset": selection_material.get_path_name(),
-            "two_sided": bool(selection_material.get_editor_property("two_sided")),
-            "blend_mode": str(selection_material.get_editor_property("blend_mode")),
-        }
 
     for asset_path in BLUEPRINT_PATHS:
         blueprint = unreal.EditorAssetLibrary.load_asset(asset_path)
@@ -60,16 +48,23 @@ def validate_level_progress_ui():
         if asset_path.endswith("BP_Dice"):
             generated_class = blueprint.generated_class()
             default_dice = unreal.get_default_object(generated_class)
-            assigned_material = default_dice.get_editor_property(
-                "selection_highlight_material"
-            )
-            entry["selection_highlight_material"] = (
-                assigned_material.get_path_name() if assigned_material else None
-            )
-            if assigned_material is None:
-                report["errors"].append(
-                    "BP_Dice has no default selection highlight material"
-                )
+            selection_light = default_dice.get_editor_property("selection_light")
+            if selection_light is None:
+                report["errors"].append("BP_Dice has no selection light")
+            else:
+                report["selection_light"] = {
+                    "component": selection_light.get_path_name(),
+                    "intensity": selection_light.get_editor_property("intensity"),
+                    "attenuation_radius": selection_light.get_editor_property(
+                        "attenuation_radius"
+                    ),
+                    "light_color": str(
+                        selection_light.get_editor_property("light_color")
+                    ),
+                    "visible_by_default": bool(
+                        selection_light.get_editor_property("visible")
+                    ),
+                }
         report["blueprints"].append(entry)
 
     player_screen = next(
