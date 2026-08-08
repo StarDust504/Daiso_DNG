@@ -6,6 +6,7 @@
 #include "Subsystems/WorldSubsystem.h"
 
 #include "Dice/DiceScoringTypes.h"
+#include "Progression/LevelProgressTypes.h"
 #include "GameManagerSubsystem.generated.h"
 
 class ACPP_Dice;
@@ -13,6 +14,10 @@ class UDataTable;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FDiceSelectionChangedSignature, FDiceRollScoreResult, ScoreResult);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FLevelProgressChangedSignature, FLevelProgressState, ProgressState);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FLevelWonSignature, FLevelProgressState, ProgressState);
 
 /** Управляет выбранными игроком кубиками и публикует текущий результат их комбинации. */
 UCLASS()
@@ -55,6 +60,26 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Score")
 	FDiceSelectionChangedSignature OnDiceSelectionChanged;
 
+	/** Вызывается при изменении выбранных костей, текущего счёта, цели или состояния победы. */
+	UPROPERTY(BlueprintAssignable, Category = "Level Progress")
+	FLevelProgressChangedSignature OnLevelProgressChanged;
+
+	/** Вызывается, когда завершённый раунд достигает текущей цели уровня. */
+	UPROPERTY(BlueprintAssignable, Category = "Level Progress")
+	FLevelWonSignature OnLevelWon;
+
+	/** Возвращает текущий снимок счёта и цели уровня. */
+	UFUNCTION(BlueprintPure, Category = "Level Progress")
+	FLevelProgressState GetLevelProgress() const;
+
+	/** Завершает раунд, проверяет его результат, сбрасывает счёт и при успехе загружает следующую цель. */
+	UFUNCTION(BlueprintCallable, Category = "Level Progress")
+	bool FinishRound();
+
+	/** Переключает текущий уровень на строку из DT_LevelGoals и сбрасывает игровой прогресс. */
+	UFUNCTION(BlueprintCallable, Category = "Level Progress")
+	bool SetCurrentLevelNumber(int32 NewLevelNumber);
+
 	/** Сохраняет старую таблицу очков, используемую существующими Blueprint-графами. */
 	UFUNCTION(BlueprintCallable, Category = "Data")
 	void RegisterScoreDataTable(UDataTable* ScoreDT);
@@ -80,6 +105,15 @@ private:
 	/** Пересчитывает текущий выбор, обновляет валидность и рассылает событие Blueprint. */
 	void RefreshSelectionScore();
 
+	/** Загружает цель текущего уровня из отдельной Data Table. */
+	bool LoadCurrentLevelGoal();
+
+	/** Публикует актуальное состояние уровня всем подписчикам. */
+	void PublishLevelProgress();
+
+	/** Снимает выбор и возвращает зарегистрированные кубики в состояние нового раунда. */
+	void ResetDiceAfterFinishedRound();
+
 	UPROPERTY(Transient)
 	TArray<int32> TempScore;
 
@@ -90,10 +124,22 @@ private:
 	TObjectPtr<UDataTable> DiceScoringRules = nullptr;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UDataTable> LevelGoalsTable = nullptr;
+
+	UPROPERTY(Transient)
 	FDiceRollScoreResult LastSelectionScoreResult;
 
 	UPROPERTY(Transient)
 	bool bIsCurrentSelectionValid = false;
+
+	UPROPERTY(Transient)
+	int32 CurrentLevelNumber = 1;
+
+	UPROPERTY(Transient)
+	int32 CurrentLevelTargetScore = 1500;
+
+	UPROPERTY(Transient)
+	bool bLevelWon = false;
 	
 	UPROPERTY(Transient)
 	UDataTable* ScoreDataTable = nullptr;

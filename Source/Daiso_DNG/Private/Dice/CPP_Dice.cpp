@@ -3,7 +3,10 @@
 
 #include "Dice/CPP_Dice.h"
 
+#include "Components/StaticMeshComponent.h"
 #include "Components/TimelineComponent.h"
+#include "Materials/MaterialInterface.h"
+#include "UObject/ConstructorHelpers.h"
 
 // Sets default values
 ACPP_Dice::ACPP_Dice()
@@ -13,6 +16,13 @@ ACPP_Dice::ACPP_Dice()
 	
 	SMC_Dice = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DiceStaticMeshComponent"));
 	MaterialTimeline = CreateDefaultSubobject<UTimelineComponent>(TEXT("MaterialTimeline"));
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> SelectionMaterialAsset(
+		TEXT("/Game/Materials/Dice/M_DiceSelectionHighlight.M_DiceSelectionHighlight"));
+	if (SelectionMaterialAsset.Succeeded())
+	{
+		SelectionHighlightMaterial = SelectionMaterialAsset.Object;
+	}
 }
 
 // Called when the game starts or when spawned
@@ -21,6 +31,23 @@ void ACPP_Dice::BeginPlay()
 	Super::BeginPlay();
 	
 	DynMaterial = SMC_Dice->CreateAndSetMaterialInstanceDynamic(0);
+	ApplySelectionHighlight();
+}
+
+// Меняет логическое состояние выбора и немедленно обновляет контур кубика.
+void ACPP_Dice::SetIsActive(const bool NewActive)
+{
+	bIsActive = NewActive;
+	ApplySelectionHighlight();
+}
+
+// Накладывает отдельный emissive-материал поверх меша, не затрагивая основной материал кубика.
+void ACPP_Dice::ApplySelectionHighlight()
+{
+	if (IsValid(SMC_Dice))
+	{
+		SMC_Dice->SetOverlayMaterial(bIsActive ? SelectionHighlightMaterial.Get() : nullptr);
+	}
 }
 
 void ACPP_Dice::UpdateMaterialParameter(float Value)

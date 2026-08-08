@@ -171,4 +171,77 @@ bool FDiceSelectionSubsystemTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLevelGoalsAssetTest,
+	"Daiso.LevelProgress.ConfiguredGoalsDataTable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// Проверяет, что отдельная таблица прогрессии содержит все согласованные цели уровней.
+bool FLevelGoalsAssetTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Goals = LoadObject<UDataTable>(nullptr,
+		TEXT("/Game/Data/DT_LevelGoals.DT_LevelGoals"));
+	if (!TestNotNull(TEXT("The level goals Data Table loads"), Goals))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("The table contains all eight prototype levels"), Goals->GetRowMap().Num(), 8);
+	const int32 ExpectedTargets[] = {
+		1500, 4000, 12000, 40000, 150000, 600000, 3000000, 20000000
+	};
+	for (int32 LevelIndex = 0; LevelIndex < 8; ++LevelIndex)
+	{
+		const int32 LevelNumber = LevelIndex + 1;
+		const FName RowName(*FString::Printf(TEXT("Level_%02d"), LevelNumber));
+		const FLevelGoalRow* Goal = Goals->FindRow<FLevelGoalRow>(
+			RowName, TEXT("FLevelGoalsAssetTest"), false);
+		if (!TestNotNull(FString::Printf(TEXT("Level %d row exists"), LevelNumber), Goal))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("Level %d row number"), LevelNumber),
+			Goal->LevelNumber, LevelNumber);
+		TestEqual(FString::Printf(TEXT("Level %d target"), LevelNumber),
+			Goal->TargetScore, ExpectedTargets[LevelIndex]);
+	}
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLevelFinishRoundTest,
+	"Daiso.LevelProgress.FinishRoundOutcome",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// Проверяет сброс счёта, переход к новой цели при успехе и сохранение цели при неудаче.
+bool FLevelFinishRoundTest::RunTest(const FString& Parameters)
+{
+	UGameManagerSubsystem* Manager = NewObject<UGameManagerSubsystem>();
+	for (const int32 Face : {1, 2, 3, 4, 5, 6})
+	{
+		Manager->AddComboToTempArray(Face);
+	}
+
+	const FLevelProgressState LiveScore = Manager->GetLevelProgress();
+	TestEqual(TEXT("A full straight updates the visible score immediately"), LiveScore.CurrentScore, 1500);
+	TestTrue(TEXT("A valid saved selection can finish the round"), LiveScore.bCanFinishRound);
+	TestFalse(TEXT("The goal is not resolved before finishing the round"), LiveScore.bLevelWon);
+
+	TestTrue(TEXT("A successful scoring selection finishes the round"), Manager->FinishRound());
+	const FLevelProgressState Advanced = Manager->GetLevelProgress();
+	TestEqual(TEXT("A successful round clears its score"), Advanced.CurrentScore, 0);
+	TestEqual(TEXT("A successful round advances to level two"), Advanced.LevelNumber, 2);
+	TestEqual(TEXT("Level two loads its configured target"), Advanced.TargetScore, 4000);
+
+	for (const int32 Face : {1, 2, 3, 4, 5, 6})
+	{
+		Manager->AddComboToTempArray(Face);
+	}
+	TestTrue(TEXT("A valid but insufficient result can still finish"), Manager->FinishRound());
+	const FLevelProgressState Retried = Manager->GetLevelProgress();
+	TestEqual(TEXT("A failed round also clears its score"), Retried.CurrentScore, 0);
+	TestEqual(TEXT("A failed round keeps the current level"), Retried.LevelNumber, 2);
+	TestEqual(TEXT("A failed round keeps the same target"), Retried.TargetScore, 4000);
+	TestFalse(TEXT("An empty round cannot be finished twice"), Manager->FinishRound());
+	return true;
+}
+
 #endif

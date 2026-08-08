@@ -25,6 +25,10 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
 	UMaterialInterface* AppearMaterial;
+
+	/** Материал контура, который накладывается поверх выбранного кубика. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Materials")
+	TObjectPtr<UMaterialInterface> SelectionHighlightMaterial = nullptr;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UTimelineComponent* MaterialTimeline;
@@ -59,9 +63,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Game")
 	FORCEINLINE bool GetCanRollDice(){ return bCanRoll; };
     
-	// SETTER: Changes data, returns void -> Use BlueprintCallable ONLY (This was causing the error)
+	/** Меняет состояние выбора и сразу синхронизирует визуальную подсветку кубика. */
 	UFUNCTION(BlueprintCallable, Category = "Game")
-	FORCEINLINE void SetIsActive(bool NewActive){ bIsActive = NewActive; };
+	void SetIsActive(bool NewActive);
     
 	// GETTER: Reads data, returns bool -> Use BlueprintPure ONLY
 	UFUNCTION(BlueprintPure, Category = "Game")
@@ -70,6 +74,9 @@ public:
 	bool bIsHidden = false;
 	
 private:
+	/** Включает или снимает overlay-материал в соответствии с текущим состоянием выбора. */
+	void ApplySelectionHighlight();
+
 	bool bCanRoll = true;
 	bool bIsActive = false;
 };
