@@ -54,22 +54,25 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Score")
 	FDiceSelectionChangedSignature OnDiceSelectionChanged;
-	
-	/** Регистрирует кубик в подсистеме, если он ещё не зарегистрирован. */
-	UFUNCTION(BlueprintCallable, Category = "Score")
-	void RegisterDice(ACPP_Dice* DiceToRegister);
-	
-	/** Удаляет кубик из списка зарегистрированных. */
-	UFUNCTION(BlueprintCallable, Category = "Score")
-	void UnregisterDice(ACPP_Dice* DiceToUnregister);
-	
-	/** Проверяет, содержится ли кубик в списке зарегистрированных. */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Score")
-	bool CheckIsDiceRegistered(ACPP_Dice* DiceToCheck) const;
 
 	/** Сохраняет старую таблицу очков, используемую существующими Blueprint-графами. */
 	UFUNCTION(BlueprintCallable, Category = "Data")
 	void RegisterScoreDataTable(UDataTable* ScoreDT);
+
+	/** Регистрирует кубик в подсистеме, если он ещё не зарегистрирован. */
+	UFUNCTION(BlueprintCallable, Category = "Player")
+	void RegisterDice(ACPP_Dice* DiceToRegister);
+	
+	/** Удаляет кубик из списка зарегистрированных. */
+	UFUNCTION(BlueprintCallable, Category = "Player")
+	void UnregisterDice(ACPP_Dice* DiceToUnregister);
+	
+	/** Проверяет, содержится ли кубик в списке зарегистрированных. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Player")
+	bool CheckIsDiceRegistered(ACPP_Dice* DiceToCheck) const;
+	
+	UFUNCTION(BlueprintCallable, Category = "Player")
+	void DestroyRegisteredDice();
 private:
 	/** Строит совместимый ключ из отсортированных значений выбранных кубиков. */
 	FName BuildSelectedDiceKey() const;
