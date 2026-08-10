@@ -6,6 +6,8 @@
 #include "Engine/DataTable.h"
 #include "DataStructs.generated.h"
 
+class ACPP_Dice;
+
 USTRUCT(BlueprintType)
 struct FComboData : public FTableRowBase
 {
@@ -14,4 +16,18 @@ struct FComboData : public FTableRowBase
 public:
 	UPROPERTY(editAnywhere, BlueprintReadWrite)
 	int32 ComboScore = 0;
+};
+
+USTRUCT(BlueprintType)
+struct FDiceSetup
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dice")
+	ACPP_Dice* DicePreset = nullptr;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dice")
+	int32 CurrentDiceCount = 6;
+	
+	
 };
