@@ -134,10 +134,16 @@ bool UDicePhysicsRollComponent::StartRoll(const int32 Result, const FQuat& Desir
 	OriginalLinearDamping = Body->GetLinearDamping();
 	OriginalAngularDamping = Body->GetAngularDamping();
 	bOriginalNotifyRigidBodyCollision = Body->BodyInstance.bNotifyRigidBodyCollision;
+	bOriginalUseCCD = Body->BodyInstance.bUseCCD;
 
 	Body->OnComponentHit.RemoveDynamic(this, &UDicePhysicsRollComponent::HandleDiceHit);
 	Body->OnComponentHit.AddDynamic(this, &UDicePhysicsRollComponent::HandleDiceHit);
 	Body->SetNotifyRigidBodyCollision(true);
+	if (bEnableContinuousCollisionDetection)
+	{
+		// CCD нужен только во время быстрого полёта; исходное значение восстанавливается после броска.
+		Body->SetUseCCD(true);
+	}
 	if (PhysicalMaterialOverride)
 	{
 		Body->SetPhysMaterialOverride(PhysicalMaterialOverride);
@@ -241,5 +247,6 @@ void UDicePhysicsRollComponent::RestoreBodySettings()
 	ActiveBody->SetLinearDamping(OriginalLinearDamping);
 	ActiveBody->SetAngularDamping(OriginalAngularDamping);
 	ActiveBody->SetNotifyRigidBodyCollision(bOriginalNotifyRigidBodyCollision);
+	ActiveBody->SetUseCCD(bOriginalUseCCD);
 	ActiveBody->OnComponentHit.RemoveDynamic(this, &UDicePhysicsRollComponent::HandleDiceHit);
 }

@@ -114,7 +114,8 @@ void UDicePhysicsRollComponent::EnsureBoardBoundaryWalls()
 	const float HalfHeight = BoardWallHeight * 0.5f / AbsScale.Z;
 	const float InsetX = BoardWallInset / AbsScale.X;
 	const float InsetY = BoardWallInset / AbsScale.Y;
-	const float TopZ = LocalMax.Z;
+	// Bounds включают высокие бортики. Защитный пол должен лежать на утопленном игровом поле.
+	const float TopZ = LocalMax.Z - BoardPlayableSurfaceInset / AbsScale.Z;
 	const float WallZ = TopZ + HalfHeight;
 
 	const float LeftX = LocalMin.X + InsetX - HalfThicknessX;
@@ -183,6 +184,7 @@ FVector UDicePhysicsRollComponent::GetBoardAwareHorizontalVelocity() const
 
 	const FTransform BoardTransform = ActiveBoardSurface->GetComponentTransform();
 	const FBoxSphereBounds LocalBounds = ActiveBoardSurface->CalcBounds(FTransform::Identity);
+	const FVector AbsScale = BoardTransform.GetScale3D().GetAbs().ComponentMax(FVector(0.001f));
 	const FVector LocalPosition = BoardTransform.InverseTransformPosition(ActiveBody->GetComponentLocation());
 	const FVector LocalOffset = LocalPosition - LocalBounds.Origin;
 
@@ -193,7 +195,8 @@ FVector UDicePhysicsRollComponent::GetBoardAwareHorizontalVelocity() const
 		FVector TargetLocal = LocalBounds.Origin;
 		TargetLocal.X += FMath::Cos(ClusterAngle) * LocalBounds.BoxExtent.X * ClusterRadius;
 		TargetLocal.Y += FMath::Sin(ClusterAngle) * LocalBounds.BoxExtent.Y * ClusterRadius;
-		TargetLocal.Z = LocalBounds.Origin.Z + LocalBounds.BoxExtent.Z;
+		TargetLocal.Z = LocalBounds.Origin.Z + LocalBounds.BoxExtent.Z
+			- BoardPlayableSurfaceInset / AbsScale.Z;
 
 		const FVector TargetWorld = BoardTransform.TransformPosition(TargetLocal);
 		FVector ToTarget = TargetWorld - ActiveBody->GetComponentLocation();
@@ -273,12 +276,63 @@ float UDicePhysicsRollComponent::GetBoardClearance() const
 
 	const FTransform BoardTransform = ActiveBoardSurface->GetComponentTransform();
 	const FBoxSphereBounds LocalBounds = ActiveBoardSurface->CalcBounds(FTransform::Identity);
+	const FVector AbsScale = BoardTransform.GetScale3D().GetAbs().ComponentMax(FVector(0.001f));
 	const FVector BoardTop = BoardTransform.TransformPosition(
-		FVector(LocalBounds.Origin.X, LocalBounds.Origin.Y, LocalBounds.Origin.Z + LocalBounds.BoxExtent.Z));
+		FVector(LocalBounds.Origin.X, LocalBounds.Origin.Y,
+			LocalBounds.Origin.Z + LocalBounds.BoxExtent.Z - BoardPlayableSurfaceInset / AbsScale.Z));
 	const FVector BoardUp = GetBoardUpVector();
 	const float BodySupportRadius = FVector::DotProduct(
 		ActiveBody->Bounds.BoxExtent.GetAbs(), BoardUp.GetAbs());
 	return FVector::DotProduct(ActiveBody->GetComponentLocation() - BoardTop, BoardUp) - BodySupportRadius;
+}
+
+// Возвращает кубик над ближайшей точкой доски, если он целиком прошёл ниже невидимого защитного пола.
+bool UDicePhysicsRollComponent::RecoverEscapedDice()
+{
+	if (!bRecoverEscapedDice || !IsValid(ActiveBody) || !IsValid(ActiveBoardSurface)
+		|| GetBoardClearance() >= -EscapedDiceDepth)
+	{
+		return false;
+	}
+
+	const FTransform BoardTransform = ActiveBoardSurface->GetComponentTransform();
+	const FBoxSphereBounds LocalBounds = ActiveBoardSurface->CalcBounds(FTransform::Identity);
+	const FVector AbsScale = BoardTransform.GetScale3D().GetAbs().ComponentMax(FVector(0.001f));
+	const FVector BoardUp = GetBoardUpVector();
+	const float BodySupportRadius = FVector::DotProduct(
+		ActiveBody->Bounds.BoxExtent.GetAbs(), BoardUp.GetAbs());
+
+	// Сохраняем текущую точку по XY, но зажимаем её внутри бортиков,
+	// чтобы возвращаемое тело не появилось в стене.
+	FVector RecoveryLocal = BoardTransform.InverseTransformPosition(ActiveBody->GetComponentLocation());
+	const float LocalMarginX = BodySupportRadius / AbsScale.X + BoardWallThickness / AbsScale.X;
+	const float LocalMarginY = BodySupportRadius / AbsScale.Y + BoardWallThickness / AbsScale.Y;
+	RecoveryLocal.X = FMath::Clamp(RecoveryLocal.X,
+		LocalBounds.Origin.X - LocalBounds.BoxExtent.X + LocalMarginX,
+		LocalBounds.Origin.X + LocalBounds.BoxExtent.X - LocalMarginX);
+	RecoveryLocal.Y = FMath::Clamp(RecoveryLocal.Y,
+		LocalBounds.Origin.Y - LocalBounds.BoxExtent.Y + LocalMarginY,
+		LocalBounds.Origin.Y + LocalBounds.BoxExtent.Y - LocalMarginY);
+	RecoveryLocal.Z = LocalBounds.Origin.Z + LocalBounds.BoxExtent.Z
+		- BoardPlayableSurfaceInset / AbsScale.Z
+		+ (BodySupportRadius + MinimumAirborneClearance) / AbsScale.Z;
+
+	const FVector PreviousVelocity = ActiveBody->GetPhysicsLinearVelocity();
+	FVector TangentialVelocity = PreviousVelocity
+		- BoardUp * FVector::DotProduct(PreviousVelocity, BoardUp);
+	TangentialVelocity = TangentialVelocity.GetClampedToMaxSize(HorizontalSpeed);
+	ActiveBody->SetWorldLocation(
+		BoardTransform.TransformPosition(RecoveryLocal), false, nullptr, ETeleportType::TeleportPhysics);
+	ActiveBody->SetPhysicsLinearVelocity(
+		TangentialVelocity + BoardUp * EscapeRecoveryUpwardSpeed, false);
+	ActiveBody->WakeAllRigidBodies();
+
+	bHasBoardImpact = false;
+	bHasMeaningfulImpact = false;
+	bHasBeenAirborne = false;
+	StableElapsed = 0.0f;
+	UE_LOG(LogTemp, Warning, TEXT("Recovered escaped dice %s above the board."), *GetNameSafe(GetOwner()));
+	return true;
 }
 
 // Возвращает нормализованное направление вверх для текущей поверхности стола.

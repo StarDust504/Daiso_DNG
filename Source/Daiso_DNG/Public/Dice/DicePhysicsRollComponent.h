@@ -103,6 +103,29 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Board Bounds", meta=(ClampMin="1.0", UIMin="1.0", UIMax="100.0"))
 	float BoardFloorThickness = 12.0f;
 
+	/**
+	 * Насколько игровая поверхность утоплена относительно самой высокой точки меша доски.
+	 * Для текущей BP_Board это разница между верхом бортика и внутренним полем.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Board Bounds", meta=(ClampMin="0.0", UIMin="0.0", UIMax="50.0"))
+	float BoardPlayableSurfaceInset = 2.8f;
+
+	/** Включает CCD только на время броска, чтобы маленькое тело не проходило сквозь пол между physics-кадрами. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Board Bounds")
+	bool bEnableContinuousCollisionDetection = true;
+
+	/** Возвращает кубик над доской, если Chaos всё-таки пропустил защитный пол. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Board Bounds")
+	bool bRecoverEscapedDice = true;
+
+	/** Насколько ниже верхней плоскости доски должна оказаться нижняя точка кубика, чтобы считать его сбежавшим. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Board Bounds", meta=(ClampMin="1.0", UIMin="1.0", UIMax="100.0"))
+	float EscapedDiceDepth = 18.0f;
+
+	/** Малый вертикальный толчок после аварийного возврата, скрывающий телепорт за естественным отскоком. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Board Bounds", meta=(ClampMin="0.0", UIMin="0.0", UIMax="300.0"))
+	float EscapeRecoveryUpwardSpeed = 90.0f;
+
 	/** Positive values move the inside face of every wall further onto the board. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Dice|Board Bounds", meta=(ClampMin="-100.0", ClampMax="100.0", UIMin="-30.0", UIMax="30.0"))
 	float BoardWallInset = 0.0f;
@@ -384,6 +407,12 @@ private:
 	/** Возвращает зазор между нижней опорной точкой кубика и поверхностью стола. */
 	float GetBoardClearance() const;
 
+	/**
+	 * Проверяет, не оказалось ли физическое тело целиком под защитным полом, и при необходимости
+	 * возвращает его в ближайшую допустимую точку над доской. Возвращает true, если было выполнено восстановление.
+	 */
+	bool RecoverEscapedDice();
+
 	/** Возвращает направление вверх для найденной поверхности стола. */
 	FVector GetBoardUpVector() const;
 
@@ -433,6 +462,7 @@ private:
 	float OriginalLinearDamping = 0.0f;
 	float OriginalAngularDamping = 0.0f;
 	bool bOriginalNotifyRigidBodyCollision = false;
+	bool bOriginalUseCCD = false;
 	bool bHasMeaningfulImpact = false;
 	bool bHasBoardImpact = false;
 	bool bHasBeenAirborne = false;

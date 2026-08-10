@@ -20,6 +20,7 @@ void UDicePhysicsRollComponent::UpdateSimulation(const float DeltaTime)
 	}
 
 	RollElapsed += DeltaTime;
+	RecoverEscapedDice();
 	const FVector LinearVelocity = ActiveBody->GetPhysicsLinearVelocity();
 	const FVector AngularVelocity = ActiveBody->GetPhysicsAngularVelocityInRadians();
 	if (GetBoardClearance() >= MinimumAirborneClearance)

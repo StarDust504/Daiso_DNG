@@ -16,6 +16,36 @@
 #include "Engine/World.h"
 #include "Subsystems/GameManagerSubsystem.h"
 
+/** Передаёт покупку подсистеме, чтобы UI никогда не хранил отдельную копию экономики. */
+bool UPlayerScreenWidget::PurchaseStoreBoost(const FName BoostId)
+{
+	if (UGameManagerSubsystem* Manager = ResolveGameManager())
+	{
+		return Manager->PurchaseBoost(BoostId);
+	}
+	return false;
+}
+
+/** Закрывает магазин через центральное состояние забега и возвращает результат операции. */
+bool UPlayerScreenWidget::CloseRunStore()
+{
+	if (UGameManagerSubsystem* Manager = ResolveGameManager())
+	{
+		return Manager->CloseStore();
+	}
+	return false;
+}
+
+/** Возвращает свежий список предложений непосредственно из GameManagerSubsystem. */
+TArray<FBoostStoreOffer> UPlayerScreenWidget::GetRunStoreOffers() const
+{
+	if (const UGameManagerSubsystem* Manager = ResolveGameManager())
+	{
+		return Manager->GetStoreOffers();
+	}
+	return {};
+}
+
 // Создаёт runtime-элементы, привязывает события подсистемы и выполняет первое обновление UI.
 void UPlayerScreenWidget::NativeConstruct()
 {
@@ -28,6 +58,18 @@ void UPlayerScreenWidget::NativeConstruct()
 			this, &UPlayerScreenWidget::HandleDiceSelectionChanged);
 		Manager->OnLevelProgressChanged.AddUniqueDynamic(
 			this, &UPlayerScreenWidget::HandleLevelProgressChanged);
+		Manager->OnMoneyChanged.AddUniqueDynamic(
+			this, &UPlayerScreenWidget::HandleMoneyChanged);
+		Manager->OnStoreOpened.AddUniqueDynamic(
+			this, &UPlayerScreenWidget::HandleStoreOpened);
+		Manager->OnStoreOffersChanged.AddUniqueDynamic(
+			this, &UPlayerScreenWidget::HandleStoreOffersChanged);
+		Manager->OnBoostPurchased.AddUniqueDynamic(
+			this, &UPlayerScreenWidget::HandleBoostPurchased);
+		Manager->OnStoreClosed.AddUniqueDynamic(
+			this, &UPlayerScreenWidget::HandleStoreClosed);
+		Manager->OnGameOver.AddUniqueDynamic(
+			this, &UPlayerScreenWidget::HandleGameOver);
 	}
 	if (IsValid(FinishRoundButton))
 	{
@@ -45,6 +87,18 @@ void UPlayerScreenWidget::NativeDestruct()
 			this, &UPlayerScreenWidget::HandleDiceSelectionChanged);
 		Manager->OnLevelProgressChanged.RemoveDynamic(
 			this, &UPlayerScreenWidget::HandleLevelProgressChanged);
+		Manager->OnMoneyChanged.RemoveDynamic(
+			this, &UPlayerScreenWidget::HandleMoneyChanged);
+		Manager->OnStoreOpened.RemoveDynamic(
+			this, &UPlayerScreenWidget::HandleStoreOpened);
+		Manager->OnStoreOffersChanged.RemoveDynamic(
+			this, &UPlayerScreenWidget::HandleStoreOffersChanged);
+		Manager->OnBoostPurchased.RemoveDynamic(
+			this, &UPlayerScreenWidget::HandleBoostPurchased);
+		Manager->OnStoreClosed.RemoveDynamic(
+			this, &UPlayerScreenWidget::HandleStoreClosed);
+		Manager->OnGameOver.RemoveDynamic(
+			this, &UPlayerScreenWidget::HandleGameOver);
 	}
 	Super::NativeDestruct();
 }
@@ -73,6 +127,7 @@ void UPlayerScreenWidget::BuildRuntimeInterface()
 
 	LevelText = AddProgressText(ProgressBox, TEXT("LevelGoalText"), 18, FLinearColor(0.65f, 0.82f, 1.0f));
 	ScoreText = AddProgressText(ProgressBox, TEXT("CurrentScoreText"), 26, FLinearColor::White);
+	MoneyText = AddProgressText(ProgressBox, TEXT("RunMoneyText"), 20, FLinearColor(0.95f, 0.82f, 0.25f));
 	SelectedDiceText = AddProgressText(ProgressBox, TEXT("SelectedDiceText"), 17, FLinearColor(0.88f, 0.90f, 0.95f));
 	VictoryText = AddProgressText(ProgressBox, TEXT("LevelVictoryText"), 20, FLinearColor(1.0f, 0.78f, 0.18f));
 	VictoryText->SetVisibility(ESlateVisibility::Collapsed);
@@ -175,6 +230,7 @@ void UPlayerScreenWidget::RefreshInterface()
 		TEXT("Уровень %d  •  Цель: %d"), Progress.LevelNumber, Progress.TargetScore)));
 	ScoreText->SetText(FText::FromString(FString::Printf(
 		TEXT("Счёт: %d / %d"), Progress.CurrentScore, Progress.TargetScore)));
+	MoneyText->SetText(FText::FromString(FString::Printf(TEXT("Монеты: %d"), Progress.Money)));
 
 	TArray<FString> DiceParts;
 	for (const int32 DiceValue : Manager->GetSelectedDiceValues())
@@ -184,8 +240,23 @@ void UPlayerScreenWidget::RefreshInterface()
 	SelectedDiceText->SetText(FText::FromString(FString::Printf(
 		TEXT("Выбрано: %s"), DiceParts.IsEmpty() ? TEXT("—") : *FString::Join(DiceParts, TEXT("  •  ")))));
 
-	VictoryText->SetText(FText::FromString(TEXT("ЦЕЛЬ ДОСТИГНУТА!")));
-	VictoryText->SetVisibility(Progress.bLevelWon ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	if (Progress.bGameOver)
+	{
+		VictoryText->SetText(FText::FromString(TEXT("ЗАБЕГ ПРОИГРАН")));
+	}
+	else if (Progress.bInStore)
+	{
+		VictoryText->SetText(FText::FromString(
+			Progress.bLastRoundWon ? TEXT("ПОБЕДА • МАГАЗИН") : TEXT("ПОРАЖЕНИЕ • МАГАЗИН")));
+	}
+	else
+	{
+		VictoryText->SetText(FText::FromString(TEXT("ЦЕЛЬ ДОСТИГНУТА!")));
+	}
+	VictoryText->SetVisibility(
+		Progress.bLevelWon || Progress.bInStore || Progress.bGameOver
+			? ESlateVisibility::Visible
+			: ESlateVisibility::Collapsed);
 	if (IsValid(FinishRoundButton))
 	{
 		FinishRoundButton->SetIsEnabled(Progress.bCanFinishRound);
@@ -196,7 +267,7 @@ void UPlayerScreenWidget::RefreshInterface()
 	}
 	if (IsValid(GenerateButton))
 	{
-		GenerateButton->SetIsEnabled(!Progress.bLevelWon);
+		GenerateButton->SetIsEnabled(!Progress.bLevelWon && !Progress.bInStore && !Progress.bGameOver);
 	}
 }
 
@@ -215,6 +286,49 @@ void UPlayerScreenWidget::HandleDiceSelectionChanged(FDiceRollScoreResult)
 // Обновляет экран после изменения счёта, смены цели или завершения уровня.
 void UPlayerScreenWidget::HandleLevelProgressChanged(FLevelProgressState)
 {
+	RefreshInterface();
+}
+
+/** Обновляет нативный текст денег и сообщает Blueprint точное изменение баланса. */
+void UPlayerScreenWidget::HandleMoneyChanged(const int32 NewBalance, const int32 Delta)
+{
+	BP_OnRunMoneyChanged(NewBalance, Delta);
+	RefreshInterface();
+}
+
+/** Оповещает Blueprint о готовом магазине и синхронизирует блокировку игровых кнопок. */
+void UPlayerScreenWidget::HandleStoreOpened(const FRunProgressState RunState)
+{
+	BP_OnRunStoreOpened(RunState.StoreOffers);
+	RefreshInterface();
+}
+
+/** Передаёт Blueprint только актуальные карточки, не заставляя его пересобирать run-state вручную. */
+void UPlayerScreenWidget::HandleStoreOffersChanged(const TArray<FBoostStoreOffer>& Offers)
+{
+	BP_OnRunStoreOffersChanged(Offers);
+	RefreshInterface();
+}
+
+/** Передаёт успешную покупку и новое число стаков в Blueprint-анимацию интерфейса. */
+void UPlayerScreenWidget::HandleBoostPurchased(
+	const FBoostStoreOffer PurchasedOffer, const int32 NewStackCount)
+{
+	BP_OnRunBoostPurchased(PurchasedOffer, NewStackCount);
+	RefreshInterface();
+}
+
+/** Уведомляет Blueprint о закрытии и показывает уже загруженную следующую либо повторную цель. */
+void UPlayerScreenWidget::HandleStoreClosed(FRunProgressState)
+{
+	BP_OnRunStoreClosed();
+	RefreshInterface();
+}
+
+/** Передаёт финальный снимок проигранного забега и обновляет нативный статус. */
+void UPlayerScreenWidget::HandleGameOver(const FRunProgressState RunState)
+{
+	BP_OnRunGameOver(RunState);
 	RefreshInterface();
 }
 

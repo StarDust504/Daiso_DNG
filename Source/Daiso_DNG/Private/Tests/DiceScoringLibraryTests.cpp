@@ -226,9 +226,13 @@ bool FLevelFinishRoundTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("The goal is not resolved before finishing the round"), LiveScore.bLevelWon);
 
 	TestTrue(TEXT("A successful scoring selection finishes the round"), Manager->FinishRound());
+	const FLevelProgressState StoreAfterWin = Manager->GetLevelProgress();
+	TestEqual(TEXT("A successful round clears its score"), StoreAfterWin.CurrentScore, 0);
+	TestTrue(TEXT("Every completed round opens the store"), StoreAfterWin.bInStore);
+	TestEqual(TEXT("The completed goal remains visible inside the store"), StoreAfterWin.LevelNumber, 1);
+	TestTrue(TEXT("Closing the store starts the next gameplay round"), Manager->CloseStore());
 	const FLevelProgressState Advanced = Manager->GetLevelProgress();
-	TestEqual(TEXT("A successful round clears its score"), Advanced.CurrentScore, 0);
-	TestEqual(TEXT("A successful round advances to level two"), Advanced.LevelNumber, 2);
+	TestEqual(TEXT("A successful round advances to level two after the store"), Advanced.LevelNumber, 2);
 	TestEqual(TEXT("Level two loads its configured target"), Advanced.TargetScore, 4000);
 
 	for (const int32 Face : {1, 2, 3, 4, 5, 6})
@@ -236,8 +240,11 @@ bool FLevelFinishRoundTest::RunTest(const FString& Parameters)
 		Manager->AddComboToTempArray(Face);
 	}
 	TestTrue(TEXT("A valid but insufficient result can still finish"), Manager->FinishRound());
+	const FLevelProgressState FailedStore = Manager->GetLevelProgress();
+	TestEqual(TEXT("A failed round also clears its score"), FailedStore.CurrentScore, 0);
+	TestTrue(TEXT("A failed round also opens the store"), FailedStore.bInStore);
+	TestTrue(TEXT("The failed store can be closed"), Manager->CloseStore());
 	const FLevelProgressState Retried = Manager->GetLevelProgress();
-	TestEqual(TEXT("A failed round also clears its score"), Retried.CurrentScore, 0);
 	TestEqual(TEXT("A failed round keeps the current level"), Retried.LevelNumber, 2);
 	TestEqual(TEXT("A failed round keeps the same target"), Retried.TargetScore, 4000);
 	TestFalse(TEXT("An empty round cannot be finished twice"), Manager->FinishRound());
