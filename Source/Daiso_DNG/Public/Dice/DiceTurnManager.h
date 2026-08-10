@@ -86,6 +86,9 @@ public:
 	/** True while AI decision/roll logic should be running. */
 	UFUNCTION(BlueprintPure, Category="Dice|Turns")
 	bool IsAITurn() const { return ActiveTurn == EDiceTurnOwner::AI; }
+	
+	UFUNCTION(BlueprintCallable, Category="Dice|Turns")
+	void SwitchDiceOnTurnSwitch();
 
 private:
 	/** Receives the completed six-die score from the collector to detect a player bust. */

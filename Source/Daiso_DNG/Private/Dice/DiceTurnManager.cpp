@@ -85,6 +85,11 @@ void ADiceTurnManager::SetActiveTurn(const EDiceTurnOwner NewTurn, const EDiceTu
 	OnTurnChanged.Broadcast(PreviousTurn, ActiveTurn, Reason);
 }
 
+void ADiceTurnManager::SwitchDiceOnTurnSwitch()
+{
+	
+}
+
 void ADiceTurnManager::HandleRollScored(const FDiceRollScoreResult ScoreResult)
 {
 	// Only a completed, valid player roll can force this handoff. AI bust handling belongs

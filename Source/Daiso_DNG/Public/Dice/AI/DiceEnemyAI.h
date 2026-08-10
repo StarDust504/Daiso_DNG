@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Data/DataStructs.h"
+#include "Dice/CPP_Dice.h"
 #include "GameFramework/Actor.h"
 #include "DiceEnemyAI.generated.h"
 
@@ -15,6 +17,10 @@ public:
 	// Sets default values for this actor's properties
 	ADiceEnemyAI();
 
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dice")
+	FDiceSetup DicePreset;
+	
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
