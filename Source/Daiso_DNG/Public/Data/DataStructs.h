@@ -24,9 +24,9 @@ struct FDiceSetup
 	GENERATED_BODY()
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dice")
-	ACPP_Dice* DicePreset = nullptr;
+	TSubclassOf<ACPP_Dice> DicePreset;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dice")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dice")
 	int32 CurrentDiceCount = 6;
 	
 	

@@ -5,6 +5,9 @@
 #include "CoreMinimal.h"
 #include "Dice/DiceScoringTypes.h"
 #include "GameFramework/Actor.h"
+
+#include "Daiso_DNG/Public/Dice/AI/DiceEnemyAI.h"
+#include "Setup/CPP_DiceSpawner.h"
 #include "DiceTurnManager.generated.h"
 
 class ADiceRollScoreCollector;
@@ -47,6 +50,9 @@ public:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category="Dice|Turns|Setup")
+	TObjectPtr<ADiceEnemyAI> Enemy;
+	
 	/** Select who takes the very first turn in the placed actor's Details panel. */
 	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category="Dice|Turns")
 	EDiceTurnOwner InitialTurn = EDiceTurnOwner::Player;
@@ -88,7 +94,16 @@ public:
 	bool IsAITurn() const { return ActiveTurn == EDiceTurnOwner::AI; }
 	
 	UFUNCTION(BlueprintCallable, Category="Dice|Turns")
-	void SwitchDiceOnTurnSwitch();
+	void InitialDiceSpawn();
+	
+	UFUNCTION(BlueprintCallable, Category="Dice|Turns")
+	void SetDicePosition(EDiceTurnOwner TurnOwner, ESpawnerType SpawnerType);
+	
+	UFUNCTION(BlueprintCallable, Category="Dice|Turns")
+	void SwitchDiceOnTurnSwitch(EDiceTurnOwner TurnOwner);
+	
+	UFUNCTION(BlueprintCallable, Category="Dice|Turns")
+	void ClearAllDice();
 
 private:
 	/** Receives the completed six-die score from the collector to detect a player bust. */
@@ -99,4 +114,16 @@ private:
 	void HandleEndTurnKey();
 	/** Uses the explicitly assigned collector or, when enabled, locates one in the level. */
 	void ResolveScoreCollector();
+	
+public:
+	UPROPERTY()
+	TArray<ACPP_Dice*> PlayerDiceArray;
+	UPROPERTY()
+	TArray<ACPP_Dice*> EnemyDiceArray;
+	UPROPERTY()
+	TArray<ACPP_DiceSpawner*> PlayerDiceSpawnerArray;
+	UPROPERTY()
+	TArray<ACPP_DiceSpawner*> EnemyDiceSpawnerArray;
+	UPROPERTY()
+	TArray<ACPP_DiceSpawner*> BoardDiceSpawnerArray;
 };

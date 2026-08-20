@@ -7,6 +7,13 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
+#include "Kismet/GameplayStatics.h"
+
+#include "Daiso_DNG/Private/FunctionLibraries/CPP_CommonFunctionLibrary.cpp"
+#include "Dice/CPP_Dice.h"
+#include "Dice/Setup/CPP_DiceSpawner.h"
+#include "Evaluation/MovieSceneEvaluationCustomVersion.h"
+#include "Player/CPP_Player.h"
 
 ADiceTurnManager::ADiceTurnManager()
 {
@@ -38,6 +45,8 @@ void ADiceTurnManager::BeginPlay()
 
 	// Publish the selected starting side so UI and AI listeners can initialize themselves.
 	SetActiveTurn(InitialTurn, EDiceTurnChangeReason::GameStarted);
+	
+	InitialDiceSpawn();
 }
 
 void ADiceTurnManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -85,8 +94,111 @@ void ADiceTurnManager::SetActiveTurn(const EDiceTurnOwner NewTurn, const EDiceTu
 	OnTurnChanged.Broadcast(PreviousTurn, ActiveTurn, Reason);
 }
 
-void ADiceTurnManager::SwitchDiceOnTurnSwitch()
+void ADiceTurnManager::InitialDiceSpawn()
 {
+	ACPP_Player* PlayerPawn = Cast<ACPP_Player>(UGameplayStatics::GetPlayerPawn(this, 0));
+	
+	if (!PlayerPawn && !Enemy)
+		return;
+	
+	
+	
+	PlayerDiceArray.Empty();
+	EnemyDiceArray.Empty();
+	
+	for (ACPP_DiceSpawner* Spawner : UCPP_CommonFunctionLibrary::GetAllActorsOfClass<ACPP_DiceSpawner>(this))
+	{
+		if (Spawner->SpawnerType == ESpawnerType::PLAYER)
+			PlayerDiceSpawnerArray.Add(Spawner);
+		else if (Spawner->SpawnerType == ESpawnerType::AI)
+			EnemyDiceSpawnerArray.Add(Spawner);
+		else
+			BoardDiceSpawnerArray.Add(Spawner);
+	}
+	
+	
+	for (int32 i = 0; i < PlayerPawn->DicePreset.CurrentDiceCount; i++)
+	{
+		ACPP_Dice* TempDice = GetWorld()->SpawnActor<ACPP_Dice>(PlayerPawn->DicePreset.DicePreset, PlayerDiceSpawnerArray[i]->GetActorLocation(), PlayerDiceSpawnerArray[i]->GetActorRotation());
+		PlayerDiceArray.Add(TempDice);
+	}
+	
+	for (int32 i = 0; i < Enemy->DicePreset.CurrentDiceCount; i++)
+	{
+		ACPP_Dice* TempDice = GetWorld()->SpawnActor<ACPP_Dice>(Enemy->DicePreset.DicePreset, EnemyDiceSpawnerArray[i]->GetActorLocation(), EnemyDiceSpawnerArray[i]->GetActorRotation());
+		EnemyDiceArray.Add(TempDice);
+	}
+	
+	switch (InitialTurn)
+	{
+		case EDiceTurnOwner::AI:
+		SetDicePosition(InitialTurn, ESpawnerType::BOARD);
+		SetDicePosition(EDiceTurnOwner::Player, ESpawnerType::PLAYER);
+		break;
+		
+		case EDiceTurnOwner::Player:
+		SetDicePosition(InitialTurn, ESpawnerType::BOARD);
+		SetDicePosition(EDiceTurnOwner::AI, ESpawnerType::PLAYER);
+		break;
+	}
+}
+
+void ADiceTurnManager::SetDicePosition(EDiceTurnOwner TurnOwner, ESpawnerType SpawnerType)
+{
+	switch (TurnOwner)
+	{
+	case EDiceTurnOwner::Player:
+			for (int32 i = 0; i < PlayerDiceArray.Num(); i++)
+			{
+				switch (SpawnerType)
+				{
+					case ESpawnerType::PLAYER:
+						PlayerDiceArray[i]->SetActorLocation(PlayerDiceSpawnerArray[i]->GetActorLocation());
+						break;
+					
+					case ESpawnerType::BOARD:
+						PlayerDiceArray[i]->SetActorLocation(BoardDiceSpawnerArray[i]->GetActorLocation());
+						break;
+				}
+			}
+			break;
+		
+		case EDiceTurnOwner::AI:
+			for (int32 i = 0; i < EnemyDiceArray.Num(); i++)
+			{
+				switch (SpawnerType)
+				{
+				case ESpawnerType::PLAYER:
+					EnemyDiceArray[i]->SetActorLocation(EnemyDiceSpawnerArray[i]->GetActorLocation());
+					break;
+					
+				case ESpawnerType::BOARD:
+					EnemyDiceArray[i]->SetActorLocation(BoardDiceSpawnerArray[i]->GetActorLocation());
+					break;
+				}
+			}
+			break;
+	}
+}
+
+void ADiceTurnManager::SwitchDiceOnTurnSwitch(EDiceTurnOwner TurnOwner)
+{
+
+}
+
+void ADiceTurnManager::ClearAllDice()
+{
+	
+	/*Destroying currently present*/
+	TArray<ACPP_Dice*> DiceArray = UCPP_CommonFunctionLibrary::GetAllActorsOfClass<ACPP_Dice>(this);
+	
+	for (ACPP_Dice* Dice : DiceArray)
+	{
+		Dice->Destroy();
+	}
+	
+	DiceArray.Empty();
+	
 	
 }
 
