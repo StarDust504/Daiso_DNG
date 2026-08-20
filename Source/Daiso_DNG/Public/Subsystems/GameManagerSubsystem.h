@@ -72,6 +72,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Score")
 	void ClearDiceSelection();
 
+	/**
+	 * Атомарно заменяет выбранные значения результатом физического броска.
+	 * В отличие от последовательных AddCombo-вызовов UI получает одно итоговое обновление.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Score")
+	bool SetDiceRollSelection(const TArray<int32>& DiceValues);
+
+	/** Фиксирует начало физического броска, чтобы цепочки не считали UI-пересчёты событиями. */
+	UFUNCTION(BlueprintCallable, Category="Run Progress|Boosts")
+	void NotifyDiceRollStarted();
+
+	/** Один раз регистрирует завершённый физический бросок и продвигает счётчики бустов. */
+	UFUNCTION(BlueprintCallable, Category="Run Progress|Boosts")
+	void NotifyDiceRollResolved(const TArray<int32>& RolledDiceValues);
+
 	/** Вызывается при каждом изменении выбранных костей и рассчитанного результата. */
 	UPROPERTY(BlueprintAssignable, Category="Score")
 	FDiceSelectionChangedSignature OnDiceSelectionChanged;
@@ -248,6 +263,15 @@ private:
 	/** Возвращает true, если конкретный триггер строки активен в переданном контексте. */
 	bool DoesEffectTriggerMatch(const FBoostRow& Row, const FBoostEffectContext& Context) const;
 
+	/** Возвращает число купленных стаков бустов с указанной универсальной операцией. */
+	int32 GetOwnedStacksForOperation(EBoostEffectOperation Operation) const;
+
+	/** Сбрасывает счётчики, живущие только один игровой раунд/ход. */
+	void ResetRoundBoostState();
+
+	/** Начисляет экономический буст за итоговый счёт и сообщает L08 о полученных монетах. */
+	void GrantScoreBoostMoney(int32 FinishedScore);
+
 	/** Снимает выбор и возвращает зарегистрированные кубики в состояние нового раунда. */
 	void ResetDiceAfterFinishedRound();
 
@@ -288,6 +312,9 @@ private:
 	FRunStageRow CurrentRunStage;
 
 	UPROPERTY(Transient)
+	FBoostEffectResult LastBoostEffectResult;
+
+	UPROPERTY(Transient)
 	int32 PendingLevelNumber = 1;
 
 	UPROPERTY(Transient)
@@ -310,6 +337,37 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<FBoostStoreOffer> CurrentStoreOffers;
+
+	// Runtime-память сложных бустов. Она меняется только игровыми событиями, не UI-пересчётами.
+	int32 ScoredOnesThisRound = 0;
+	int32 ScoredFivesThisRound = 0;
+	int32 CombinationCountThisRound = 0;
+	int32 SetCountThisRound = 0;
+	int32 HotDiceCountThisRound = 0;
+	int32 SuccessfulRollsThisTurn = 0;
+	int32 ConsecutiveSuccessfulRolls = 0;
+	int32 ConsecutiveSuccessfulRerolls = 0;
+	int32 StraightMultiplierThisTurn = 0;
+	int32 RetriggeredBaseScoreThisTurn = 0;
+	int32 RetriggerCountThisTurn = 0;
+	int32 LastScoringCombinationScore = 0;
+	int32 PendingHotDiceFullCycles = 0;
+	int32 PendingReinvestmentMultiplier = 0;
+	int32 ActiveReinvestmentMultiplier = 0;
+	int32 PendingAcceleratorPurchases = 0;
+	int32 ActiveAcceleratorPurchases = 0;
+	int32 RunWinBoostCount = 0;
+	int32 CapitalismMoneyTriggerCount = 0;
+	int32 RoundXMultiplierActivations = 0;
+	int32 XMultiplierActivationsBeforeCurrentRoll = 0;
+	float CurrentRollHotCycleXMultiplier = 1.0f;
+	float CurrentRollPurchaseXMultiplier = 1.0f;
+	bool bHasResolvedRollThisRound = false;
+	bool bCurrentRollIsReroll = false;
+	bool bHotDiceBeforeCurrentRoll = false;
+	bool bRecursiveRetriggerUsedThisTurn = false;
+	TSet<FName> CombinationRulesThisRound;
+	TSet<uint8> CombinationTypesThisTurn;
 
 	FRandomStream StoreRandomStream;
 

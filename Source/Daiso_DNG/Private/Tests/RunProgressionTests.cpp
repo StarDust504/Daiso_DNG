@@ -50,7 +50,8 @@ namespace RunProgressionTests
 	static void AddBoost(UDataTable& Table, const FName Id, const EBoostRarity Rarity,
 		const int32 Cost, const int32 MaxStacks, const EBoostEffectTrigger Trigger = EBoostEffectTrigger::None,
 		const EBoostEffectOperation Operation = EBoostEffectOperation::None,
-		const float Magnitude = 0.0f, const float Threshold = 0.0f, const int32 Face = 0)
+		const float Magnitude = 0.0f, const float Threshold = 0.0f, const int32 Face = 0,
+		const float SecondaryMagnitude = 0.0f, const int32 Limit = 0)
 	{
 		FBoostRow Boost;
 		Boost.DisplayName = FText::FromName(Id);
@@ -63,6 +64,8 @@ namespace RunProgressionTests
 		Boost.EffectMagnitude = Magnitude;
 		Boost.EffectThreshold = Threshold;
 		Boost.EffectFaceValue = Face;
+		Boost.EffectSecondaryMagnitude = SecondaryMagnitude;
+		Boost.EffectLimit = Limit;
 		Table.AddRow(Id, Boost);
 	}
 
@@ -135,6 +138,18 @@ bool FRunProgressionConfiguredAssetsTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("E01 uses the XMult operation"),
 			XMultBoost->EffectOperation, EBoostEffectOperation::MultiplyScore);
 		TestEqual(TEXT("E01 requires Mult ten"), XMultBoost->EffectThreshold, 10.0f);
+	}
+	for (const FName RowName : Boosts->GetRowNames())
+	{
+		const FBoostRow* Row = Boosts->FindRow<FBoostRow>(
+			RowName, TEXT("FRunProgressionConfiguredAssetsTest.AllEffects"), false);
+		if (TestNotNull(FString::Printf(TEXT("%s effect row exists"), *RowName.ToString()), Row))
+		{
+			TestNotEqual(FString::Printf(TEXT("%s has an implemented operation"), *RowName.ToString()),
+				Row->EffectOperation, EBoostEffectOperation::None);
+			TestNotEqual(FString::Printf(TEXT("%s has an implemented trigger"), *RowName.ToString()),
+				Row->EffectTrigger, EBoostEffectTrigger::None);
+		}
 	}
 	return !HasAnyErrors();
 }
@@ -355,6 +370,213 @@ bool FRunProgressionBoostEffectsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Farkle insurance preserves fifty percent of the turn"),
 		FarkleResult.PreservedTurnScore, 250);
 	TestEqual(TEXT("Farkle exposes the preserved value as its final result"), FarkleResult.FinalScore, 250);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRunProgressionRemainingStaticBoostsTest,
+	"Daiso.RunProgression.Boosts.RemainingStaticEffects",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** Проверяет Base по пятёркам/сетам/стритам, порог банка и денежный обычный Mult. */
+bool FRunProgressionRemainingStaticBoostsTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Stages = RunProgressionTests::MakeStagesTable();
+	RunProgressionTests::AddStage(*Stages, 1, 1, 0, 0, 0);
+	UDataTable* Boosts = RunProgressionTests::MakeBoostsTable();
+	RunProgressionTests::AddBoost(*Boosts, TEXT("C02"), EBoostRarity::Common, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::AddBasePerMatchingDie, 50.0f, 0.0f, 5);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("C03"), EBoostRarity::Common, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::AddBasePerSet, 300.0f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("C04"), EBoostRarity::Common, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::AddBasePerStraight, 500.0f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("C07"), EBoostRarity::Common, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::AddBaseIfScoreAtLeast, 250.0f, 1000.0f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("R06"), EBoostRarity::Rare, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::AddMultiplierPerMoneyBlock, 2.0f, 10.0f);
+
+	UGameManagerSubsystem* Manager = NewObject<UGameManagerSubsystem>();
+	Manager->RegisterRunDataTables(Stages, Boosts);
+	for (const FName Id : {FName(TEXT("C02")), FName(TEXT("C03")), FName(TEXT("C04")),
+		FName(TEXT("C07")), FName(TEXT("R06"))})
+	{
+		TestTrue(FString::Printf(TEXT("%s is granted"), *Id.ToString()), Manager->AddBoostStackForTests(Id));
+	}
+
+	FBoostEffectContext Context;
+	Context.BaseScore = 1000;
+	Context.BaseMultiplier = 1.0f;
+	Context.ScoredDiceValues = {5, 5, 5, 1, 2, 3};
+	Context.CombinationCount = 2;
+	Context.CombinationTypes = {EDiceScoringCombinationType::SameFace, EDiceScoringCombinationType::Straight};
+	Context.CombinationRuleNames = {TEXT("Set5"), TEXT("Straight")};
+	Context.CombinationScores = {500, 500};
+	Context.CombinationDiceCounts = {3, 5};
+	const FBoostEffectResult Result = Manager->EvaluateBoostEffects(Context);
+	TestEqual(TEXT("All remaining Common Base bonuses compose"), Result.ModifiedBaseScore, 2200);
+	TestEqual(TEXT("Twenty-five coins provide two +2 Mult blocks"), Result.AdditiveMultiplier, 5.0f);
+	TestEqual(TEXT("Static effects produce the expected final score"), Result.FinalScore, 11000);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRunProgressionRollChainBoostsTest,
+	"Daiso.RunProgression.Boosts.RollChains",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** Проверяет накопление граней, успешных перебросов, Перегрев и Экспоненту по реальным roll events. */
+bool FRunProgressionRollChainBoostsTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Stages = RunProgressionTests::MakeStagesTable();
+	RunProgressionTests::AddStage(*Stages, 1, 1, 0, 0, 0);
+	UDataTable* Boosts = RunProgressionTests::MakeBoostsTable();
+	RunProgressionTests::AddBoost(*Boosts, TEXT("R01"), EBoostRarity::Rare, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::AddMultiplierPerFaceMilestone, 1.0f, 3.0f, 1);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("R09"), EBoostRarity::Rare, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::AddMultiplierPerSuccessfulReroll, 2.0f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("E04"), EBoostRarity::Epic, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::MultiplyPerSuccessAfterThreshold, 1.5f, 3.0f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("L01"), EBoostRarity::Legendary, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::MultiplyPerSuccessfulRoll, 1.5f);
+
+	UGameManagerSubsystem* Manager = NewObject<UGameManagerSubsystem>();
+	Manager->RegisterRunDataTables(Stages, Boosts);
+	for (const FName Id : {FName(TEXT("R01")), FName(TEXT("R09")), FName(TEXT("E04")), FName(TEXT("L01"))})
+	{
+		Manager->AddBoostStackForTests(Id);
+	}
+	for (int32 Roll = 0; Roll < 3; ++Roll)
+	{
+		Manager->NotifyDiceRollStarted();
+		Manager->SetDiceRollSelection({1});
+		Manager->NotifyDiceRollResolved({1});
+	}
+
+	FBoostEffectContext Context;
+	Context.BaseScore = 100;
+	Context.BaseMultiplier = 1.0f;
+	Context.ScoredDiceValues = {1};
+	Context.CombinationCount = 1;
+	Context.CombinationTypes = {EDiceScoringCombinationType::SingleFace};
+	Context.CombinationRuleNames = {TEXT("Single1")};
+	Context.CombinationScores = {100};
+	Context.CombinationDiceCounts = {1};
+	const FBoostEffectResult Result = Manager->EvaluateBoostEffects(Context);
+	TestEqual(TEXT("Face milestone and two successful rerolls produce +5 Mult"),
+		Result.AdditiveMultiplier, 6.0f);
+	TestTrue(TEXT("Third success combines Overheat and Exponent"),
+		FMath::IsNearlyEqual(Result.XMultiplier, 5.0625f));
+	TestEqual(TEXT("The three-roll chain changes the selected score"),
+		Manager->GetSelectedDiceScore().TotalScore, 3038);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRunProgressionRetriggerBoostsTest,
+	"Daiso.RunProgression.Boosts.Retriggers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** Проверяет третий/четвёртый сет и единственную рекурсивную копию первого Retrigger. */
+bool FRunProgressionRetriggerBoostsTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Stages = RunProgressionTests::MakeStagesTable();
+	RunProgressionTests::AddStage(*Stages, 1, 1, 0, 0, 0);
+	UDataTable* Boosts = RunProgressionTests::MakeBoostsTable();
+	RunProgressionTests::AddBoost(*Boosts, TEXT("E02"), EBoostRarity::Epic, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::RetriggerEveryNthSet, 1.0f, 3.0f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("E07"), EBoostRarity::Epic, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::RetriggerEveryNthSet, 2.0f, 4.0f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("L04"), EBoostRarity::Legendary, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::RecursiveFirstRetrigger, 1.0f);
+
+	UGameManagerSubsystem* Manager = NewObject<UGameManagerSubsystem>();
+	Manager->RegisterRunDataTables(Stages, Boosts);
+	for (const FName Id : {FName(TEXT("E02")), FName(TEXT("E07")), FName(TEXT("L04"))})
+	{
+		Manager->AddBoostStackForTests(Id);
+	}
+	for (int32 Roll = 0; Roll < 4; ++Roll)
+	{
+		Manager->NotifyDiceRollStarted();
+		Manager->SetDiceRollSelection({2, 2, 2});
+		Manager->NotifyDiceRollResolved({2, 2, 2});
+	}
+
+	FBoostEffectContext Context;
+	Context.BaseScore = 200;
+	Context.BaseMultiplier = 1.0f;
+	Context.ScoredDiceValues = {2, 2, 2};
+	Context.CombinationCount = 1;
+	Context.CombinationTypes = {EDiceScoringCombinationType::SameFace};
+	Context.CombinationRuleNames = {TEXT("Set2")};
+	Context.CombinationScores = {200};
+	Context.CombinationDiceCounts = {3};
+	const FBoostEffectResult Result = Manager->EvaluateBoostEffects(Context);
+	TestEqual(TEXT("Echo, production and recursion create four repeats"), Result.RetriggerCount, 4);
+	TestEqual(TEXT("Four repeats of a two-set add eight hundred Base"), Result.RetriggeredBaseScore, 800);
+	TestEqual(TEXT("Retriggers are included before Mult"), Result.FinalScore, 1000);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRunProgressionPurchaseCarryBoostsTest,
+	"Daiso.RunProgression.Boosts.PurchaseCarry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** Проверяет перенос Реинвестирования и Ускорителя только в следующий раунд. */
+bool FRunProgressionPurchaseCarryBoostsTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Stages = RunProgressionTests::MakeStagesTable();
+	RunProgressionTests::AddStage(*Stages, 1, 1, 0, 0, 3);
+	UDataTable* Boosts = RunProgressionTests::MakeBoostsTable();
+	RunProgressionTests::AddBoost(*Boosts, TEXT("R07"), EBoostRarity::Rare, 1, 2,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::AddNextRoundPurchaseMultiplier, 2.0f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("E08"), EBoostRarity::Epic, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::MultiplyFirstCombinationAfterPurchase, 1.25f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("C01"), EBoostRarity::Common, 1, 1);
+
+	UGameManagerSubsystem* Manager = NewObject<UGameManagerSubsystem>();
+	Manager->RegisterRunDataTables(Stages, Boosts);
+	Manager->AddBoostStackForTests(TEXT("R07"));
+	Manager->AddBoostStackForTests(TEXT("E08"));
+	RunProgressionTests::SelectDice(*Manager, {1});
+	TestTrue(TEXT("The setup round finishes"), Manager->FinishRound());
+	TestTrue(TEXT("Buying another boost succeeds"), Manager->PurchaseBoost(TEXT("C01")));
+	TestTrue(TEXT("The shop closes into the charged round"), Manager->CloseStore());
+	Manager->NotifyDiceRollStarted();
+	Manager->SetDiceRollSelection({1});
+	Manager->NotifyDiceRollResolved({1});
+	TestEqual(TEXT("+2 Mult and x1.25 apply to the first scoring combination"),
+		Manager->GetSelectedDiceScore().TotalScore, 375);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRunProgressionEconomyLegendaryBoostsTest,
+	"Daiso.RunProgression.Boosts.EconomyAndWins",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** Проверяет R10, постоянный рост L08 от boost-money и L05 от победы. */
+bool FRunProgressionEconomyLegendaryBoostsTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Stages = RunProgressionTests::MakeStagesTable();
+	RunProgressionTests::AddStage(*Stages, 1, 1, 0, 0, 0);
+	UDataTable* Boosts = RunProgressionTests::MakeBoostsTable();
+	RunProgressionTests::AddBoost(*Boosts, TEXT("R10"), EBoostRarity::Rare, 1, 1,
+		EBoostEffectTrigger::RoundFinished, EBoostEffectOperation::GrantMoneyPerScoreBlock,
+		1.0f, 5000.0f, 0, 0.0f, 3);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("L05"), EBoostRarity::Legendary, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::MultiplyPerWin, 1.35f);
+	RunProgressionTests::AddBoost(*Boosts, TEXT("L08"), EBoostRarity::Legendary, 1, 1,
+		EBoostEffectTrigger::ScoreCalculated, EBoostEffectOperation::MultiplyPerBoostMoneyTrigger, 1.1f);
+
+	UGameManagerSubsystem* Manager = NewObject<UGameManagerSubsystem>();
+	Manager->RegisterRunDataTables(Stages, Boosts);
+	Manager->AddBoostStackForTests(TEXT("R10"));
+	Manager->AddBoostStackForTests(TEXT("L05"));
+	Manager->AddBoostStackForTests(TEXT("L08"));
+	RunProgressionTests::SelectDice(*Manager, {1, 1, 1, 1, 1, 1});
+	TestTrue(TEXT("The high-score round finishes"), Manager->FinishRound());
+	TestEqual(TEXT("Eight thousand score grants one capped-step coin"), Manager->GetMoney(), 26);
+	TestTrue(TEXT("The empty store closes"), Manager->CloseStore());
+	RunProgressionTests::SelectDice(*Manager, {1});
+	TestEqual(TEXT("One win and one boost-money trigger persist multiplicatively"),
+		Manager->GetSelectedDiceScore().TotalScore, 149);
 	return !HasAnyErrors();
 }
 

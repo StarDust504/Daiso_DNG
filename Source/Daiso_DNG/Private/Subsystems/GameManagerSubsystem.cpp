@@ -99,6 +99,198 @@ void UGameManagerSubsystem::ClearDiceSelection()
 	RefreshSelectionScore();
 }
 
+/** Заменяет текущий выбор одним проверенным набором граней и публикует только готовый результат. */
+bool UGameManagerSubsystem::SetDiceRollSelection(const TArray<int32>& DiceValues)
+{
+	if (bStoreOpen || bGameOver || DiceValues.Num() > 6)
+	{
+		return false;
+	}
+	for (const int32 Value : DiceValues)
+	{
+		if (Value < 1 || Value > 6)
+		{
+			return false;
+		}
+	}
+
+	TempScore = DiceValues;
+	TempScore.Sort();
+	RefreshSelectionScore();
+	return true;
+}
+
+/** Снимок состояния до физического броска отделяет реальные игровые события от кликов по UI. */
+void UGameManagerSubsystem::NotifyDiceRollStarted()
+{
+	bCurrentRollIsReroll = bHasResolvedRollThisRound;
+	bHotDiceBeforeCurrentRoll = TempScore.Num() == 6 && LastSelectionScoreResult.bAllDiceScored;
+	XMultiplierActivationsBeforeCurrentRoll = RoundXMultiplierActivations;
+	CurrentRollHotCycleXMultiplier = 1.0f;
+	CurrentRollPurchaseXMultiplier = 1.0f;
+}
+
+/** Продвигает все stateful-эффекты ровно один раз после завершения физического броска. */
+void UGameManagerSubsystem::NotifyDiceRollResolved(const TArray<int32>& RolledDiceValues)
+{
+	if (bStoreOpen || bGameOver || RolledDiceValues.IsEmpty() || RolledDiceValues.Num() > 6)
+	{
+		return;
+	}
+	for (const int32 Face : RolledDiceValues)
+	{
+		if (Face < 1 || Face > 6)
+		{
+			return;
+		}
+	}
+	if (!IsValid(DiceScoringRules))
+	{
+		DiceScoringRules = LoadObject<UDataTable>(
+			nullptr, TEXT("/Game/Data/DT_DiceScoringRules.DT_DiceScoringRules"));
+	}
+
+	const FDiceRollScoreResult RollResult = UDiceScoringLibrary::CalculateSelectedDiceScore(
+		RolledDiceValues, DiceScoringRules);
+	const bool bSuccessfulRoll = RollResult.bIsValid && RollResult.TotalScore > 0;
+
+	// E05 consumes an already armed Hot Dice cycle before this roll can arm the next one.
+	if (PendingHotDiceFullCycles > 0 && RolledDiceValues.Num() == 6)
+	{
+		for (const FOwnedBoostStack& Owned : OwnedBoosts)
+		{
+			const FBoostRow* Row = FindBoostRow(Owned.BoostId);
+			if (Row && Row->EffectOperation == EBoostEffectOperation::MultiplyNextFullCycleAfterHotDice)
+			{
+				CurrentRollHotCycleXMultiplier = FMath::Pow(
+					FMath::Max(0.0f, Row->EffectMagnitude), PendingHotDiceFullCycles * Owned.StackCount);
+				break;
+			}
+		}
+		PendingHotDiceFullCycles = 0;
+	}
+
+	if (bSuccessfulRoll && ActiveAcceleratorPurchases > 0)
+	{
+		for (const FOwnedBoostStack& Owned : OwnedBoosts)
+		{
+			const FBoostRow* Row = FindBoostRow(Owned.BoostId);
+			if (Row && Row->EffectOperation == EBoostEffectOperation::MultiplyFirstCombinationAfterPurchase)
+			{
+				CurrentRollPurchaseXMultiplier = FMath::Pow(
+					FMath::Max(0.0f, Row->EffectMagnitude), ActiveAcceleratorPurchases);
+				break;
+			}
+		}
+		ActiveAcceleratorPurchases = 0;
+	}
+
+	if (bSuccessfulRoll)
+	{
+		++SuccessfulRollsThisTurn;
+		++ConsecutiveSuccessfulRolls;
+		if (bCurrentRollIsReroll)
+		{
+			++ConsecutiveSuccessfulRerolls;
+		}
+
+		for (const FDiceScoringCombination& Combination : RollResult.Combinations)
+		{
+			++CombinationCountThisRound;
+			CombinationRulesThisRound.Add(Combination.RuleRowName);
+			CombinationTypesThisTurn.Add(static_cast<uint8>(Combination.CombinationType));
+			LastScoringCombinationScore = Combination.Score;
+			for (const int32 Face : Combination.DiceValues)
+			{
+				ScoredOnesThisRound += Face == 1 ? 1 : 0;
+				ScoredFivesThisRound += Face == 5 ? 1 : 0;
+			}
+
+			if (Combination.CombinationType == EDiceScoringCombinationType::SameFace)
+			{
+				++SetCountThisRound;
+				int32 NewRetriggers = 0;
+				for (const FOwnedBoostStack& Owned : OwnedBoosts)
+				{
+					const FBoostRow* Row = FindBoostRow(Owned.BoostId);
+					if (!Row || Row->EffectOperation != EBoostEffectOperation::RetriggerEveryNthSet)
+					{
+						continue;
+					}
+					const int32 Frequency = FMath::Max(1, FMath::RoundToInt(Row->EffectThreshold));
+					if (SetCountThisRound % Frequency == 0)
+					{
+						NewRetriggers += FMath::Max(0,
+							FMath::RoundToInt(Row->EffectMagnitude) * Owned.StackCount);
+					}
+				}
+				if (NewRetriggers > 0)
+				{
+					RetriggeredBaseScoreThisTurn += Combination.Score * NewRetriggers;
+					RetriggerCountThisTurn += NewRetriggers;
+					if (!bRecursiveRetriggerUsedThisTurn
+						&& GetOwnedStacksForOperation(EBoostEffectOperation::RecursiveFirstRetrigger) > 0)
+					{
+						RetriggeredBaseScoreThisTurn += Combination.Score;
+						++RetriggerCountThisTurn;
+						bRecursiveRetriggerUsedThisTurn = true;
+					}
+				}
+			}
+			else if (Combination.CombinationType == EDiceScoringCombinationType::Straight)
+			{
+				for (const FOwnedBoostStack& Owned : OwnedBoosts)
+				{
+					const FBoostRow* Row = FindBoostRow(Owned.BoostId);
+					if (Row && Row->EffectOperation == EBoostEffectOperation::AddMultiplierPerStraight)
+					{
+						const float Bonus = Combination.DiceValues.Num() == 6
+							? Row->EffectSecondaryMagnitude : Row->EffectMagnitude;
+						StraightMultiplierThisTurn += FMath::RoundToInt(Bonus * Owned.StackCount);
+					}
+				}
+			}
+		}
+	}
+	else
+	{
+		ConsecutiveSuccessfulRolls = 0;
+		ConsecutiveSuccessfulRerolls = 0;
+		SuccessfulRollsThisTurn = 0;
+	}
+
+	const bool bHotDiceNow = TempScore.Num() == 6 && LastSelectionScoreResult.bAllDiceScored;
+	if (bHotDiceNow && !bHotDiceBeforeCurrentRoll)
+	{
+		++HotDiceCountThisRound;
+		if (GetOwnedStacksForOperation(EBoostEffectOperation::MultiplyNextFullCycleAfterHotDice) > 0)
+		{
+			++PendingHotDiceFullCycles;
+		}
+
+		const int32 EternalEngineStacks = GetOwnedStacksForOperation(
+			EBoostEffectOperation::RetriggerLastCombinationOnHotDice);
+		if (EternalEngineStacks > 0 && LastScoringCombinationScore > 0)
+		{
+			const int32 Repeats = HotDiceCountThisRound * EternalEngineStacks;
+			RetriggeredBaseScoreThisTurn += LastScoringCombinationScore * Repeats;
+			RetriggerCountThisTurn += Repeats;
+			if (!bRecursiveRetriggerUsedThisTurn
+				&& GetOwnedStacksForOperation(EBoostEffectOperation::RecursiveFirstRetrigger) > 0)
+			{
+				RetriggeredBaseScoreThisTurn += LastScoringCombinationScore;
+				++RetriggerCountThisTurn;
+				bRecursiveRetriggerUsedThisTurn = true;
+			}
+		}
+	}
+
+	RefreshSelectionScore();
+	RoundXMultiplierActivations += LastBoostEffectResult.ActivatedXMultiplierCount;
+	bHasResolvedRollThisRound = true;
+	bCurrentRollIsReroll = false;
+}
+
 /** Собирает совместимый снимок игрового счёта, цели, денег и текущей фазы забега. */
 FLevelProgressState UGameManagerSubsystem::GetLevelProgress() const
 {
@@ -180,9 +372,15 @@ bool UGameManagerSubsystem::FinishRound()
 		}
 	}
 
+	GrantScoreBoostMoney(FinishedRound.CurrentScore);
+	if (bReachedGoal && GetOwnedStacksForOperation(EBoostEffectOperation::MultiplyPerWin) > 0)
+	{
+		++RunWinBoostCount;
+	}
 	ChangeMoney(bReachedGoal ? CompletedStage.Win : CompletedStage.Lose);
 	ResetDiceAfterFinishedRound();
 	ResetRoundScore();
+	ResetRoundBoostState();
 
 	bStoreOpen = true;
 	GenerateStoreOffers(CompletedStage);
@@ -231,6 +429,20 @@ bool UGameManagerSubsystem::PurchaseBoost(const FName BoostId)
 	}
 
 	Offer->bPurchased = true;
+	if (Row->EffectOperation != EBoostEffectOperation::AddNextRoundPurchaseMultiplier)
+	{
+		for (const FOwnedBoostStack& Owned : OwnedBoosts)
+		{
+			const FBoostRow* OwnedRow = FindBoostRow(Owned.BoostId);
+			if (OwnedRow && OwnedRow->EffectOperation == EBoostEffectOperation::AddNextRoundPurchaseMultiplier)
+			{
+				PendingReinvestmentMultiplier += FMath::RoundToInt(
+					OwnedRow->EffectMagnitude * Owned.StackCount);
+			}
+		}
+	}
+	PendingAcceleratorPurchases += GetOwnedStacksForOperation(
+		EBoostEffectOperation::MultiplyFirstCombinationAfterPurchase);
 	ChangeMoney(-Row->Cost);
 	if (Money <= 0)
 	{
@@ -274,6 +486,11 @@ bool UGameManagerSubsystem::CloseStore()
 		}
 		bLevelWon = false;
 		ResetRoundScore();
+		ResetRoundBoostState();
+		ActiveReinvestmentMultiplier = PendingReinvestmentMultiplier;
+		PendingReinvestmentMultiplier = 0;
+		ActiveAcceleratorPurchases = PendingAcceleratorPurchases;
+		PendingAcceleratorPurchases = 0;
 	}
 
 	PublishLevelProgress();
@@ -289,6 +506,11 @@ void UGameManagerSubsystem::ResetRun()
 	ResetRoundScore();
 	OwnedBoosts.Reset();
 	CurrentStoreOffers.Reset();
+	PendingReinvestmentMultiplier = 0;
+	PendingAcceleratorPurchases = 0;
+	RunWinBoostCount = 0;
+	CapitalismMoneyTriggerCount = 0;
+	ResetRoundBoostState();
 	CurrentLevelNumber = 1;
 	PendingLevelNumber = 1;
 	Money = 25;
@@ -317,6 +539,8 @@ FBoostEffectResult UGameManagerSubsystem::EvaluateBoostEffects(const FBoostEffec
 	Result.ModifiedBaseScore = FMath::Max(0, Context.BaseScore);
 	Result.AdditiveMultiplier = FMath::Max(0.0f, Context.BaseMultiplier);
 	Result.XMultiplier = 1.0f;
+	Result.RetriggeredBaseScore = RetriggeredBaseScoreThisTurn;
+	Result.RetriggerCount = RetriggerCountThisTurn;
 
 	struct FActiveEffect
 	{
@@ -333,7 +557,28 @@ FBoostEffectResult UGameManagerSubsystem::EvaluateBoostEffects(const FBoostEffec
 		}
 	}
 
-	// Первый проход меняет только Base, поэтому результат не зависит от порядка покупок.
+	int32 ContextSetCount = 0;
+	int32 ContextStraightCount = 0;
+	int32 ContextFullStraightCount = 0;
+	for (int32 Index = 0; Index < Context.CombinationTypes.Num(); ++Index)
+	{
+		if (Context.CombinationTypes[Index] == EDiceScoringCombinationType::SameFace)
+		{
+			++ContextSetCount;
+		}
+		else if (Context.CombinationTypes[Index] == EDiceScoringCombinationType::Straight)
+		{
+			++ContextStraightCount;
+			if (Context.CombinationDiceCounts.IsValidIndex(Index)
+				&& Context.CombinationDiceCounts[Index] == 6)
+			{
+				++ContextFullStraightCount;
+			}
+		}
+	}
+
+	// Первый проход меняет Base и добавляет уже заработанные Retrigger, независимо от порядка покупок.
+	Result.ModifiedBaseScore += Result.RetriggeredBaseScore;
 	for (const FActiveEffect& Effect : ActiveEffects)
 	{
 		const FBoostRow& Row = *Effect.Row;
@@ -352,6 +597,21 @@ FBoostEffectResult UGameManagerSubsystem::EvaluateBoostEffects(const FBoostEffec
 			Result.ModifiedBaseScore += FMath::RoundToInt(
 				Row.EffectMagnitude * static_cast<float>(Context.CombinationCount * Effect.Stacks));
 		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddBasePerSet)
+		{
+			Result.ModifiedBaseScore += FMath::RoundToInt(
+				Row.EffectMagnitude * static_cast<float>(ContextSetCount * Effect.Stacks));
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddBasePerStraight)
+		{
+			Result.ModifiedBaseScore += FMath::RoundToInt(
+				Row.EffectMagnitude * static_cast<float>(ContextStraightCount * Effect.Stacks));
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddBaseIfScoreAtLeast
+			&& Context.BaseScore >= FMath::RoundToInt(Row.EffectThreshold))
+		{
+			Result.ModifiedBaseScore += FMath::RoundToInt(Row.EffectMagnitude * Effect.Stacks);
+		}
 	}
 
 	// Второй проход накапливает обычный +Mult поверх базового множителя контекста.
@@ -364,21 +624,168 @@ FBoostEffectResult UGameManagerSubsystem::EvaluateBoostEffects(const FBoostEffec
 		}
 		else if (Row.EffectOperation == EBoostEffectOperation::AddMultiplierPerCombination)
 		{
+			const int32 EffectiveCombinationCount = FMath::Max(
+				Context.CombinationCount + RetriggerCountThisTurn,
+				CombinationCountThisRound + RetriggerCountThisTurn);
 			Result.AdditiveMultiplier += Row.EffectMagnitude
-				* static_cast<float>(Context.CombinationCount * Effect.Stacks);
+				* static_cast<float>(EffectiveCombinationCount * Effect.Stacks);
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddMultiplierPerFaceMilestone)
+		{
+			int32 ContextMatches = 0;
+			for (const int32 Face : Context.ScoredDiceValues)
+			{
+				ContextMatches += Face == Row.EffectFaceValue ? 1 : 0;
+			}
+			const int32 Count = Row.EffectFaceValue == 1
+				? FMath::Max(ScoredOnesThisRound, ContextMatches)
+				: FMath::Max(ScoredFivesThisRound, ContextMatches);
+			const int32 Milestone = FMath::Max(1, FMath::RoundToInt(Row.EffectThreshold));
+			Result.AdditiveMultiplier += Row.EffectMagnitude
+				* static_cast<float>((Count / Milestone) * Effect.Stacks);
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddMultiplierPerPreviousSet)
+		{
+			const int32 Count = FMath::Max(SetCountThisRound, ContextSetCount);
+			Result.AdditiveMultiplier += Row.EffectMagnitude
+				* static_cast<float>(FMath::Max(0, Count - 1) * Effect.Stacks);
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddMultiplierPerHotDice)
+		{
+			const int32 Count = FMath::Max(HotDiceCountThisRound, Context.bIsHotDice ? 1 : 0);
+			Result.AdditiveMultiplier += Row.EffectMagnitude * static_cast<float>(Count * Effect.Stacks);
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddMultiplierPerStraight)
+		{
+			const float Fallback = Row.EffectMagnitude * static_cast<float>(ContextStraightCount)
+				+ (Row.EffectSecondaryMagnitude - Row.EffectMagnitude)
+					* static_cast<float>(ContextFullStraightCount);
+			Result.AdditiveMultiplier += FMath::Max(
+				static_cast<float>(StraightMultiplierThisTurn), Fallback * Effect.Stacks);
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddMultiplierPerMoneyBlock)
+		{
+			const int32 Block = FMath::Max(1, FMath::RoundToInt(Row.EffectThreshold));
+			Result.AdditiveMultiplier += Row.EffectMagnitude
+				* static_cast<float>((FMath::Max(0, Money) / Block) * Effect.Stacks);
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddNextRoundPurchaseMultiplier)
+		{
+			Result.AdditiveMultiplier += static_cast<float>(ActiveReinvestmentMultiplier);
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddMultiplierPerUniqueCombination)
+		{
+			int32 UniqueCount = CombinationRulesThisRound.Num();
+			if (UniqueCount == 0)
+			{
+				TSet<FName> ContextRules;
+				for (const FName RuleName : Context.CombinationRuleNames)
+				{
+					ContextRules.Add(RuleName);
+				}
+				UniqueCount = ContextRules.Num();
+			}
+			float Bonus = Row.EffectMagnitude * static_cast<float>(UniqueCount * Effect.Stacks);
+			if (Row.EffectLimit > 0)
+			{
+				Bonus = FMath::Min(Bonus, static_cast<float>(Row.EffectLimit));
+			}
+			Result.AdditiveMultiplier += Bonus;
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::AddMultiplierPerSuccessfulReroll)
+		{
+			Result.AdditiveMultiplier += Row.EffectMagnitude
+				* static_cast<float>(ConsecutiveSuccessfulRerolls * Effect.Stacks);
 		}
 	}
 
-	// Третий проход видит уже итоговый +Mult и применяет условные XMult мультипликативно.
+	// Третий проход собирает XMult-факторы. L07 последовательно усиливает каждый следующий.
+	TArray<float> XMultiplierFactors;
+	float XMultiplierEnhancement = 0.0f;
 	for (const FActiveEffect& Effect : ActiveEffects)
 	{
 		const FBoostRow& Row = *Effect.Row;
 		if (Row.EffectOperation == EBoostEffectOperation::MultiplyScore
 			&& (Row.EffectThreshold <= 0.0f || Result.AdditiveMultiplier >= Row.EffectThreshold))
 		{
-			Result.XMultiplier *= FMath::Pow(FMath::Max(0.0f, Row.EffectMagnitude), Effect.Stacks);
+			XMultiplierFactors.Add(FMath::Pow(FMath::Max(0.0f, Row.EffectMagnitude), Effect.Stacks));
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::MultiplyPerOwnedBoost)
+		{
+			XMultiplierFactors.Add(FMath::Pow(FMath::Max(0.0f, Row.EffectMagnitude),
+				OwnedBoosts.Num() * Effect.Stacks));
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::MultiplyPerSuccessAfterThreshold)
+		{
+			const int32 Exponent = ConsecutiveSuccessfulRolls
+				- FMath::Max(1, FMath::RoundToInt(Row.EffectThreshold)) + 1;
+			if (Exponent > 0)
+			{
+				XMultiplierFactors.Add(FMath::Pow(FMath::Max(0.0f, Row.EffectMagnitude),
+					Exponent * Effect.Stacks));
+			}
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::MultiplyNextFullCycleAfterHotDice
+			&& CurrentRollHotCycleXMultiplier != 1.0f)
+		{
+			XMultiplierFactors.Add(CurrentRollHotCycleXMultiplier);
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::MultiplyPerMoneyBlock)
+		{
+			const int32 Block = FMath::Max(1, FMath::RoundToInt(Row.EffectThreshold));
+			const int32 Exponent = (FMath::Max(0, Money) / Block) * Effect.Stacks;
+			if (Exponent > 0)
+			{
+				XMultiplierFactors.Add(FMath::Pow(FMath::Max(0.0f, Row.EffectMagnitude), Exponent));
+			}
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::MultiplyFirstCombinationAfterPurchase
+			&& CurrentRollPurchaseXMultiplier != 1.0f)
+		{
+			XMultiplierFactors.Add(CurrentRollPurchaseXMultiplier);
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::MultiplyPerSuccessfulRoll
+			&& SuccessfulRollsThisTurn > 0)
+		{
+			XMultiplierFactors.Add(FMath::Pow(FMath::Max(0.0f, Row.EffectMagnitude),
+				SuccessfulRollsThisTurn * Effect.Stacks));
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::MultiplyPerWin
+			&& RunWinBoostCount > 0)
+		{
+			XMultiplierFactors.Add(FMath::Pow(FMath::Max(0.0f, Row.EffectMagnitude),
+				RunWinBoostCount * Effect.Stacks));
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::MultiplyAfterUniqueCombinationTypes)
+		{
+			TSet<uint8> Types = CombinationTypesThisTurn;
+			for (const EDiceScoringCombinationType Type : Context.CombinationTypes)
+			{
+				Types.Add(static_cast<uint8>(Type));
+			}
+			if (Types.Num() >= FMath::Max(1, FMath::RoundToInt(Row.EffectThreshold)))
+			{
+				XMultiplierFactors.Add(FMath::Pow(FMath::Max(0.0f, Row.EffectMagnitude), Effect.Stacks));
+			}
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::MultiplyPerBoostMoneyTrigger
+			&& CapitalismMoneyTriggerCount > 0)
+		{
+			XMultiplierFactors.Add(FMath::Pow(FMath::Max(0.0f, Row.EffectMagnitude),
+				CapitalismMoneyTriggerCount * Effect.Stacks));
+		}
+		else if (Row.EffectOperation == EBoostEffectOperation::EnhanceNextXMultiplier)
+		{
+			XMultiplierEnhancement += Row.EffectMagnitude * static_cast<float>(Effect.Stacks);
 		}
 	}
+	for (int32 Index = 0; Index < XMultiplierFactors.Num(); ++Index)
+	{
+		const float EnhancedFactor = XMultiplierFactors[Index] + XMultiplierEnhancement
+			* static_cast<float>(XMultiplierActivationsBeforeCurrentRoll + Index);
+		Result.XMultiplier *= FMath::Max(0.0f, EnhancedFactor);
+	}
+	Result.ActivatedXMultiplierCount = XMultiplierFactors.Num();
 
 	// Специальный проход Farkle возвращает сохранённую часть хода отдельно от обычного score.
 	for (const FActiveEffect& Effect : ActiveEffects)
@@ -430,6 +837,9 @@ bool UGameManagerSubsystem::SetCurrentLevelNumber(const int32 NewLevelNumber)
 	CurrentStoreOffers.Reset();
 	ResetDiceAfterFinishedRound();
 	ResetRoundScore();
+	PendingReinvestmentMultiplier = 0;
+	PendingAcceleratorPurchases = 0;
+	ResetRoundBoostState();
 	OnStoreOffersChanged.Broadcast(CurrentStoreOffers);
 	OnDiceSelectionChanged.Broadcast(LastSelectionScoreResult);
 	PublishLevelProgress();
@@ -480,8 +890,17 @@ void UGameManagerSubsystem::RefreshSelectionScore()
 		for (const FDiceScoringCombination& Combination : RawResult.Combinations)
 		{
 			Context.ScoredDiceValues.Append(Combination.DiceValues);
+			Context.CombinationTypes.Add(Combination.CombinationType);
+			Context.CombinationRuleNames.Add(Combination.RuleRowName);
+			Context.CombinationScores.Add(Combination.Score);
+			Context.CombinationDiceCounts.Add(Combination.DiceValues.Num());
 		}
-		LastSelectionScoreResult.TotalScore = EvaluateBoostEffects(Context).FinalScore;
+		LastBoostEffectResult = EvaluateBoostEffects(Context);
+		LastSelectionScoreResult.TotalScore = LastBoostEffectResult.FinalScore;
+	}
+	else
+	{
+		LastBoostEffectResult = FBoostEffectResult();
 	}
 
 	bIsCurrentSelectionValid = LastSelectionScoreResult.bIsValid
@@ -764,8 +1183,86 @@ bool UGameManagerSubsystem::DoesEffectTriggerMatch(
 		return Context.bIsFarkle;
 	case EBoostEffectTrigger::HotDice:
 		return Context.bIsHotDice;
+	case EBoostEffectTrigger::RollResolved:
+	case EBoostEffectTrigger::RoundFinished:
+	case EBoostEffectTrigger::BoostPurchased:
+	case EBoostEffectTrigger::RunWon:
+		return false;
 	default:
 		return false;
+	}
+}
+
+/** Суммирует стаки по operation, сохраняя весь баланс и MaxStacks в DT_Boosts. */
+int32 UGameManagerSubsystem::GetOwnedStacksForOperation(const EBoostEffectOperation Operation) const
+{
+	int32 TotalStacks = 0;
+	for (const FOwnedBoostStack& Owned : OwnedBoosts)
+	{
+		const FBoostRow* Row = FindBoostRow(Owned.BoostId);
+		if (Row && Row->EffectOperation == Operation)
+		{
+			TotalStacks += Owned.StackCount;
+		}
+	}
+	return TotalStacks;
+}
+
+/** Обнуляет память текущего раунда, не затрагивая run-wide победы и магазинные pending-заряды. */
+void UGameManagerSubsystem::ResetRoundBoostState()
+{
+	ScoredOnesThisRound = 0;
+	ScoredFivesThisRound = 0;
+	CombinationCountThisRound = 0;
+	SetCountThisRound = 0;
+	HotDiceCountThisRound = 0;
+	SuccessfulRollsThisTurn = 0;
+	ConsecutiveSuccessfulRolls = 0;
+	ConsecutiveSuccessfulRerolls = 0;
+	StraightMultiplierThisTurn = 0;
+	RetriggeredBaseScoreThisTurn = 0;
+	RetriggerCountThisTurn = 0;
+	LastScoringCombinationScore = 0;
+	PendingHotDiceFullCycles = 0;
+	ActiveReinvestmentMultiplier = 0;
+	ActiveAcceleratorPurchases = 0;
+	RoundXMultiplierActivations = 0;
+	XMultiplierActivationsBeforeCurrentRoll = 0;
+	CurrentRollHotCycleXMultiplier = 1.0f;
+	CurrentRollPurchaseXMultiplier = 1.0f;
+	bHasResolvedRollThisRound = false;
+	bCurrentRollIsReroll = false;
+	bHotDiceBeforeCurrentRoll = false;
+	bRecursiveRetriggerUsedThisTurn = false;
+	CombinationRulesThisRound.Reset();
+	CombinationTypesThisTurn.Reset();
+}
+
+/** R10 выдаёт монеты по итоговому порогу, а L08 запоминает каждый coin как отдельную активацию. */
+void UGameManagerSubsystem::GrantScoreBoostMoney(const int32 FinishedScore)
+{
+	for (const FOwnedBoostStack& Owned : OwnedBoosts)
+	{
+		const FBoostRow* Row = FindBoostRow(Owned.BoostId);
+		if (!Row || Row->EffectOperation != EBoostEffectOperation::GrantMoneyPerScoreBlock)
+		{
+			continue;
+		}
+		const int32 ScoreBlock = FMath::Max(1, FMath::RoundToInt(Row->EffectThreshold));
+		int32 Coins = FMath::Max(0, FinishedScore) / ScoreBlock;
+		Coins *= FMath::Max(0, FMath::RoundToInt(Row->EffectMagnitude)) * Owned.StackCount;
+		if (Row->EffectLimit > 0)
+		{
+			Coins = FMath::Min(Coins, Row->EffectLimit);
+		}
+		if (Coins > 0)
+		{
+			ChangeMoney(Coins);
+			if (GetOwnedStacksForOperation(EBoostEffectOperation::MultiplyPerBoostMoneyTrigger) > 0)
+			{
+				CapitalismMoneyTriggerCount += Coins;
+			}
+		}
 	}
 }
 

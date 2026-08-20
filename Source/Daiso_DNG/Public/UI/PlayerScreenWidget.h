@@ -11,6 +11,7 @@
 class UBorder;
 class UButton;
 class UGameManagerSubsystem;
+class URunStoreWidget;
 class UTextBlock;
 class UVerticalBox;
 
@@ -158,4 +159,8 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> GenerateButton = nullptr;
+
+	/** Нативный магазин-подстраховка для W_PlayerScreen без реализованных Blueprint store-events. */
+	UPROPERTY(Transient)
+	TObjectPtr<URunStoreWidget> RunStoreWidget = nullptr;
 };

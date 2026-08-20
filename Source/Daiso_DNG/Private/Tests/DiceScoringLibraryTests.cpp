@@ -163,6 +163,12 @@ bool FDiceSelectionSubsystemTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("A selected non-scoring die makes the selection invalid"), Manager->IsCurrentDiceSelectionValid());
 
 	Manager->ClearDiceSelection();
+	TestTrue(TEXT("A physical roll can replace the selection in one operation"),
+		Manager->SetDiceRollSelection({1, 2, 3, 4, 5, 6}));
+	TestEqual(TEXT("Atomic physical-roll selection uses the same scorer"),
+		Manager->GetCurrentScore(NAME_None), 1500);
+
+	Manager->ClearDiceSelection();
 	Manager->AddComboToTempArray(2);
 	Manager->AddComboToTempArray(2);
 	Manager->AddComboToTempArray(2);

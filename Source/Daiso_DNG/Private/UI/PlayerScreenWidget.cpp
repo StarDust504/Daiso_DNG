@@ -15,6 +15,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/World.h"
 #include "Subsystems/GameManagerSubsystem.h"
+#include "UI/RunStoreWidget.h"
 
 /** Передаёт покупку подсистеме, чтобы UI никогда не хранил отдельную копию экономики. */
 bool UPlayerScreenWidget::PurchaseStoreBoost(const FName BoostId)
@@ -51,6 +52,14 @@ void UPlayerScreenWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	BuildRuntimeInterface();
+	if (!IsValid(RunStoreWidget) && IsValid(GetOwningPlayer()))
+	{
+		RunStoreWidget = CreateWidget<URunStoreWidget>(GetOwningPlayer(), URunStoreWidget::StaticClass());
+		if (IsValid(RunStoreWidget))
+		{
+			RunStoreWidget->AddToViewport(500);
+		}
+	}
 
 	if (UGameManagerSubsystem* Manager = ResolveGameManager())
 	{
@@ -99,6 +108,11 @@ void UPlayerScreenWidget::NativeDestruct()
 			this, &UPlayerScreenWidget::HandleStoreClosed);
 		Manager->OnGameOver.RemoveDynamic(
 			this, &UPlayerScreenWidget::HandleGameOver);
+	}
+	if (IsValid(RunStoreWidget))
+	{
+		RunStoreWidget->RemoveFromParent();
+		RunStoreWidget = nullptr;
 	}
 	Super::NativeDestruct();
 }

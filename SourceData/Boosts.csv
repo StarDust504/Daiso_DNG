@@ -1,35 +1,35 @@
-Name,DisplayName,Rarity,Cost,EffectDescription,MaxStacks,Tags,EffectTrigger,EffectOperation,EffectMagnitude,EffectThreshold,EffectFaceValue
-C01,"Острые единицы",Common,4,"Каждая засчитанная 1 получает +100 Base",3,"Ones",ScoreCalculated,AddBasePerMatchingDie,100,0,1
-C02,"Золотые пятёрки",Common,4,"Каждая засчитанная 5 получает +50 Base",3,"Fives",None,None,0,0,0
-C03,"Тяжёлый сет",Common,5,"Сет из 3+ одинаковых получает +300 Base",3,"Sets",None,None,0,0,0
-C04,"Уличный игрок",Common,5,"Любой стрит получает +500 Base",2,"Straight",None,None,0,0,0
-C05,"Разгон",Common,5,"Каждая комбинация, засчитанная в текущем ходу, даёт +1 Mult до конца хода",2,"General",ScoreCalculated,AddMultiplierPerCombination,1,0,0
-C06,"Полный стол",Common,6,"После Hot Dice получить +4 Mult до конца хода",2,"Hot Dice",HotDice,AddMultiplier,4,0,0
-C07,"Верный банк",Common,4,"При фиксации ≥1000 очков получить дополнительно +250 Base",2,"Bank",None,None,0,0,0
-C08,"Страховка",Common,6,"Первый Farkle за раунд сохраняет 50% очков текущего хода",1,"Risk",Farkle,PreserveTurnScoreFraction,0.5,0,0
-R01,"Фабрика единиц",Rare,8,"Каждые 3 засчитанные 1 дают этому бусту постоянный +1 Mult до конца раунда",2,"Ones / Scaling",None,None,0,0,0
-R02,"Фабрика пятёрок",Rare,8,"Каждые 5 засчитанных 5 дают постоянный +1 Mult до конца раунда",2,"Fives / Scaling",None,None,0,0,0
-R03,"Серийное производство",Rare,8,"Каждый сет в текущем ходу даёт следующему сету ещё +3 Mult",2,"Sets",None,None,0,0,0
-R04,"Горячая серия",Rare,9,"Каждый Hot Dice увеличивает постоянный Mult этого буста на +3 до конца раунда",1,"Hot Dice",None,None,0,0,0
-R05,"Улица с продолжением",Rare,8,"После стрита получить +2 Mult; полный стрит даёт +5 Mult",2,"Straight",None,None,0,0,0
-R06,"Сложный процент",Rare,9,"За каждые полные 10 монет в запасе получить +2 Mult",1,"Money",None,None,0,0,0
-R07,"Реинвестирование",Rare,7,"После покупки другого буста получить +2 Mult до конца следующего раунда",2,"Spend",None,None,0,0,0
-R08,"Охотник за комбинациями",Rare,9,"Каждый новый тип комбинации в раунде даёт постоянный +2 Mult, максимум +12",1,"Hybrid",None,None,0,0,0
-R09,"Всё или ничего",Rare,8,"Каждый успешный переброс подряд даёт +2 Mult; фиксация сбрасывает накопление",2,"Risk",None,None,0,0,0
-R10,"Денежный поток",Rare,10,"За каждые 5000 заработанных очков за раунд получить 1 монету, максимум 3",1,"Economy",None,None,0,0,0
-E01,"Критическая масса",Epic,13,"Если текущий Mult достиг 10+, применить ×2 XMult",1,"General",ScoreCalculated,MultiplyScore,2,10,0
-E02,"Эхо",Epic,14,"Каждый третий засчитанный сет Retrigger'ится один раз",1,"Sets",None,None,0,0,0
-E03,"Снежный ком",Epic,15,"За каждый имеющийся буст получить ×1.08 XMult",1,"General",None,None,0,0,0
-E04,"Перегрев",Epic,13,"Третий успешный бросок подряд даёт ×1.5, каждый следующий ещё ×1.5",1,"Risk",None,None,0,0,0
-E05,"Горячий двигатель",Epic,14,"После Hot Dice получить ×2 для следующего полного цикла шести костей",1,"Hot Dice",None,None,0,0,0
-E06,"Финансовый рычаг",Epic,15,"Каждые 15 монет в запасе дают ×1.5, эффекты перемножаются",1,"Hoard",None,None,0,0,0
-E07,"Массовое производство",Epic,14,"Каждый четвёртый сет в раунде Retrigger'ится дважды",1,"Sets",None,None,0,0,0
-E08,"Ускоритель",Epic,12,"После каждой покупки ×1.25 к первой результативной комбинации следующего раунда",1,"Spend",None,None,0,0,0
-L01,"Экспонента",Legendary,22,"Каждый успешный бросок в текущем ходу увеличивает XMult: ×1.5 → ×2.25 → ×3.375 → ×5.06...",1,"Risk",None,None,0,0,0
-L02,"Вечный двигатель",Legendary,24,"Каждый Hot Dice Retrigger'ит последнюю результативную комбинацию столько раз, сколько Hot Dice было сделано в этом ходу",1,"Hot Dice",None,None,0,0,0
-L03,"Большой капитал",Legendary,22,"За каждые полные 20 монет получить ×2 к итоговому Score",1,"Money",None,None,0,0,0
-L04,"Рекурсия",Legendary,25,"Первый Retrigger каждого хода может один раз вызвать обычные эффекты Retrigger",1,"Retrigger",None,None,0,0,0
-L05,"Дом проиграл",Legendary,21,"После каждой победы этот буст получает постоянный ×1.35, складываясь мультипликативно до конца забега",1,"Win streak",None,None,0,0,0
-L06,"Совершенная машина",Legendary,23,"После активации трёх разных типов комбинаций в одном ходу все последующие комбинации получают ×3",1,"Hybrid",None,None,0,0,0
-L07,"Чёрная дыра",Legendary,25,"Каждый активированный ×Mult в этом ходу дополнительно увеличивает следующий ×Mult на +0.25 к его множителю",1,"XMult",None,None,0,0,0
-L08,"Капитализм",Legendary,20,"Каждый раз, когда получаешь деньги из эффекта буста, получить постоянный ×1.1 этому бусту до конца забега",1,"Economy",None,None,0,0,0
+Name,DisplayName,Rarity,Cost,EffectDescription,MaxStacks,Tags,EffectTrigger,EffectOperation,EffectMagnitude,EffectThreshold,EffectFaceValue,EffectSecondaryMagnitude,EffectLimit
+C01,"Острые единицы",Common,4,"Каждая засчитанная 1 получает +100 Base",3,"Ones",ScoreCalculated,AddBasePerMatchingDie,100,0,1,0,0
+C02,"Золотые пятёрки",Common,4,"Каждая засчитанная 5 получает +50 Base",3,"Fives",ScoreCalculated,AddBasePerMatchingDie,50,0,5,0,0
+C03,"Тяжёлый сет",Common,5,"Сет из 3+ одинаковых получает +300 Base",3,"Sets",ScoreCalculated,AddBasePerSet,300,0,0,0,0
+C04,"Уличный игрок",Common,5,"Любой стрит получает +500 Base",2,"Straight",ScoreCalculated,AddBasePerStraight,500,0,0,0,0
+C05,"Разгон",Common,5,"Каждая комбинация, засчитанная в текущем ходу, даёт +1 Mult до конца хода",2,"General",ScoreCalculated,AddMultiplierPerCombination,1,0,0,0,0
+C06,"Полный стол",Common,6,"После Hot Dice получить +4 Mult до конца хода",2,"Hot Dice",ScoreCalculated,AddMultiplierPerHotDice,4,0,0,0,0
+C07,"Верный банк",Common,4,"При фиксации ≥1000 очков получить дополнительно +250 Base",2,"Bank",ScoreCalculated,AddBaseIfScoreAtLeast,250,1000,0,0,0
+C08,"Страховка",Common,6,"Первый Farkle за раунд сохраняет 50% очков текущего хода",1,"Risk",Farkle,PreserveTurnScoreFraction,0.5,0,0,0,0
+R01,"Фабрика единиц",Rare,8,"Каждые 3 засчитанные 1 дают этому бусту постоянный +1 Mult до конца раунда",2,"Ones / Scaling",ScoreCalculated,AddMultiplierPerFaceMilestone,1,3,1,0,0
+R02,"Фабрика пятёрок",Rare,8,"Каждые 5 засчитанных 5 дают постоянный +1 Mult до конца раунда",2,"Fives / Scaling",ScoreCalculated,AddMultiplierPerFaceMilestone,1,5,5,0,0
+R03,"Серийное производство",Rare,8,"Каждый сет в текущем ходу даёт следующему сету ещё +3 Mult",2,"Sets",ScoreCalculated,AddMultiplierPerPreviousSet,3,0,0,0,0
+R04,"Горячая серия",Rare,9,"Каждый Hot Dice увеличивает постоянный Mult этого буста на +3 до конца раунда",1,"Hot Dice",ScoreCalculated,AddMultiplierPerHotDice,3,0,0,0,0
+R05,"Улица с продолжением",Rare,8,"После стрита получить +2 Mult; полный стрит даёт +5 Mult",2,"Straight",ScoreCalculated,AddMultiplierPerStraight,2,0,0,5,0
+R06,"Сложный процент",Rare,9,"За каждые полные 10 монет в запасе получить +2 Mult",1,"Money",ScoreCalculated,AddMultiplierPerMoneyBlock,2,10,0,0,0
+R07,"Реинвестирование",Rare,7,"После покупки другого буста получить +2 Mult до конца следующего раунда",2,"Spend",ScoreCalculated,AddNextRoundPurchaseMultiplier,2,0,0,0,0
+R08,"Охотник за комбинациями",Rare,9,"Каждый новый тип комбинации в раунде даёт постоянный +2 Mult, максимум +12",1,"Hybrid",ScoreCalculated,AddMultiplierPerUniqueCombination,2,0,0,0,12
+R09,"Всё или ничего",Rare,8,"Каждый успешный переброс подряд даёт +2 Mult; фиксация сбрасывает накопление",2,"Risk",ScoreCalculated,AddMultiplierPerSuccessfulReroll,2,0,0,0,0
+R10,"Денежный поток",Rare,10,"За каждые 5000 заработанных очков за раунд получить 1 монету, максимум 3",1,"Economy",RoundFinished,GrantMoneyPerScoreBlock,1,5000,0,0,3
+E01,"Критическая масса",Epic,13,"Если текущий Mult достиг 10+, применить ×2 XMult",1,"General",ScoreCalculated,MultiplyScore,2,10,0,0,0
+E02,"Эхо",Epic,14,"Каждый третий засчитанный сет Retrigger'ится один раз",1,"Sets",ScoreCalculated,RetriggerEveryNthSet,1,3,0,0,0
+E03,"Снежный ком",Epic,15,"За каждый имеющийся буст получить ×1.08 XMult",1,"General",ScoreCalculated,MultiplyPerOwnedBoost,1.08,0,0,0,0
+E04,"Перегрев",Epic,13,"Третий успешный бросок подряд даёт ×1.5, каждый следующий ещё ×1.5",1,"Risk",ScoreCalculated,MultiplyPerSuccessAfterThreshold,1.5,3,0,0,0
+E05,"Горячий двигатель",Epic,14,"После Hot Dice получить ×2 для следующего полного цикла шести костей",1,"Hot Dice",ScoreCalculated,MultiplyNextFullCycleAfterHotDice,2,0,0,0,0
+E06,"Финансовый рычаг",Epic,15,"Каждые 15 монет в запасе дают ×1.5, эффекты перемножаются",1,"Hoard",ScoreCalculated,MultiplyPerMoneyBlock,1.5,15,0,0,0
+E07,"Массовое производство",Epic,14,"Каждый четвёртый сет в раунде Retrigger'ится дважды",1,"Sets",ScoreCalculated,RetriggerEveryNthSet,2,4,0,0,0
+E08,"Ускоритель",Epic,12,"После каждой покупки ×1.25 к первой результативной комбинации следующего раунда",1,"Spend",ScoreCalculated,MultiplyFirstCombinationAfterPurchase,1.25,0,0,0,0
+L01,"Экспонента",Legendary,22,"Каждый успешный бросок в текущем ходу увеличивает XMult: ×1.5 → ×2.25 → ×3.375 → ×5.06...",1,"Risk",ScoreCalculated,MultiplyPerSuccessfulRoll,1.5,0,0,0,0
+L02,"Вечный двигатель",Legendary,24,"Каждый Hot Dice Retrigger'ит последнюю результативную комбинацию столько раз, сколько Hot Dice было сделано в этом ходу",1,"Hot Dice",ScoreCalculated,RetriggerLastCombinationOnHotDice,1,0,0,0,0
+L03,"Большой капитал",Legendary,22,"За каждые полные 20 монет получить ×2 к итоговому Score",1,"Money",ScoreCalculated,MultiplyPerMoneyBlock,2,20,0,0,0
+L04,"Рекурсия",Legendary,25,"Первый Retrigger каждого хода может один раз вызвать обычные эффекты Retrigger",1,"Retrigger",ScoreCalculated,RecursiveFirstRetrigger,1,0,0,0,0
+L05,"Дом проиграл",Legendary,21,"После каждой победы этот буст получает постоянный ×1.35, складываясь мультипликативно до конца забега",1,"Win streak",ScoreCalculated,MultiplyPerWin,1.35,0,0,0,0
+L06,"Совершенная машина",Legendary,23,"После активации трёх разных типов комбинаций в одном ходу все последующие комбинации получают ×3",1,"Hybrid",ScoreCalculated,MultiplyAfterUniqueCombinationTypes,3,3,0,0,0
+L07,"Чёрная дыра",Legendary,25,"Каждый активированный ×Mult в этом ходу дополнительно увеличивает следующий ×Mult на +0.25 к его множителю",1,"XMult",ScoreCalculated,EnhanceNextXMultiplier,0.25,0,0,0,0
+L08,"Капитализм",Legendary,20,"Каждый раз, когда получаешь деньги из эффекта буста, получить постоянный ×1.1 этому бусту до конца забега",1,"Economy",ScoreCalculated,MultiplyPerBoostMoneyTrigger,1.1,0,0,0,0
